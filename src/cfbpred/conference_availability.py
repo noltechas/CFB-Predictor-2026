@@ -67,7 +67,8 @@ def collect(root=ROOT, conferences=None, session=None):
                     break
                 response.raise_for_status()
                 payload = response.json()
-                item = archive(response.content, url, run, f"{conference}_{kind}.json", params=params)
+                item = archive(response.content, url, run, f"{conference}_{kind}.json", params=params,
+                               link_previous=True)
                 item.update(conference=conference, kind=kind, official_page=CONFERENCES[conference])
                 sources.append(item)
                 count = len(payload.get("data", [])) if isinstance(payload, dict) else len(payload)

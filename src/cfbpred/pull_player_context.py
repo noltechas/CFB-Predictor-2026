@@ -9,6 +9,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, parse_qs
 
@@ -30,14 +31,42 @@ PUBLIC_INDEXES = {
 }
 
 
-def archive(body, url, directory, name, *, params=None, observed_at=None):
+def previous_capture(directory, name, digest, size, *, lookback=3):
+    """An earlier run's byte-identical copy of this document, if any.
+
+    Captures live at <root>/<stamp>/<name>; the 30-minute jobs re-capture
+    unchanged reports, which had grown the conference archive to 3.6 GB of
+    which 3.4 GB were duplicates. Only the newest few runs are checked.
+    """
+    earlier = sorted((p for p in directory.parent.glob(f"*/{name}") if p.parent != directory), key=lambda p: p.parent.name)
+    for candidate in reversed(earlier[-lookback:]):
+        if candidate.stat().st_size == size and hashlib.sha256(candidate.read_bytes()).hexdigest() == digest:
+            return candidate
+    return None
+
+
+def archive(body, url, directory, name, *, params=None, observed_at=None, link_previous=False):
+    """Write one immutable capture plus its receipt.
+
+    With ``link_previous`` an unchanged document becomes a hard link to its
+    earlier capture: same path, bytes and SHA, one copy on disk. Linked files are
+    made read-only, because a write to one would change every run sharing it.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     observed_at = observed_at or datetime.now(timezone.utc).isoformat()
     digest = hashlib.sha256(body).hexdigest()
     path = directory / name
-    if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-        raise ValueError(f"Refusing to overwrite archived evidence: {path}")
-    path.write_bytes(body)
+    if path.exists():
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise ValueError(f"Refusing to overwrite archived evidence: {path}")
+        # Identical bytes: never rewrite in place (the file may be a shared link).
+    else:
+        previous = previous_capture(directory, name, digest, len(body)) if link_previous else None
+        if previous is None:
+            path.write_bytes(body)
+        else:
+            os.link(previous, path)
+            os.chmod(path, 0o444)
     meta = dict(url=url, params=params or {}, observed_at=observed_at,
                 published_at=None, sha256=digest, path=str(path.resolve()))
     path.with_suffix(path.suffix + ".source.json").write_text(json.dumps(meta, indent=2)+"\n")
@@ -77,7 +106,7 @@ def pull(output=OUTPUT, start_year=2018, end_year=CURRENT_SEASON, *, api=True):
         for year in range(start_year, end_year+1):
             data = client.get("/player/portal", {"year": year})
             sources.append(archive(json.dumps(data).encode(), "https://api.collegefootballdata.com/player/portal", run,
-                                   f"portal_{year}.json", params={"year": year}))
+                                   f"portal_{year}.json", params={"year": year}, link_previous=True))
             print(f"portal {year}: {len(data)}", flush=True)
         for endpoint, params, name in [
             ("/roster", {"year": end_year}, f"roster_{end_year}.json"),
@@ -86,13 +115,13 @@ def pull(output=OUTPUT, start_year=2018, end_year=CURRENT_SEASON, *, api=True):
         ]:
             data = client.get(endpoint, params)
             sources.append(archive(json.dumps(data).encode(), "https://api.collegefootballdata.com"+endpoint,
-                                   run, name, params=params))
+                                   run, name, params=params, link_previous=True))
             print(f"{name}: {len(data)}", flush=True)
     session = requests.Session()
     for name, url in PUBLIC_INDEXES.items():
         try:
             response = session.get(url, timeout=40); response.raise_for_status()
-            sources.append(archive(response.content, url, run, name+".html"))
+            sources.append(archive(response.content, url, run, name+".html", link_previous=True))
             links = html_documents(response.text, url)
             (run/(name+"_links.json")).write_text(json.dumps(links, indent=2)+"\n")
             for link, label in links.items():
@@ -100,7 +129,7 @@ def pull(output=OUTPUT, start_year=2018, end_year=CURRENT_SEASON, *, api=True):
                 response = session.get(link, timeout=40); response.raise_for_status()
                 if not response.content.startswith(b"%PDF"): continue
                 filename = name+"_"+hashlib.sha256(link.encode()).hexdigest()[:16]+".pdf"
-                item = archive(response.content, link, run, filename); item["label"] = label
+                item = archive(response.content, link, run, filename, link_previous=True); item["label"] = label
                 sources.append(item)
             # SEC's public reporting partner. No private/admin routes or keys.
             for link in links:
@@ -113,7 +142,7 @@ def pull(output=OUTPUT, start_year=2018, end_year=CURRENT_SEASON, *, api=True):
                                             json=params, timeout=40)
                     response.raise_for_status()
                     sources.append(archive(response.content, endpoint,
-                                           run, name+"_"+report_type+"_public.json", params=params))
+                                           run, name+"_"+report_type+"_public.json", params=params, link_previous=True))
             print(name, "links", len(links), flush=True)
         except requests.RequestException as error:
             failures.append(dict(source=name, url=url, error=str(error)))

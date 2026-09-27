@@ -170,8 +170,11 @@ def build(source, raw, reviewed, output):
                       player_ref=new[0][1]+1)
             facts.append({**base,"kind":"membership","value":"transfer_arrived"})
     reviewed_rows=json.loads(reviewed.read_text())
+    digests = {}  # one hash per source file, not per row (hundreds of thousands)
     for row in reviewed_rows:
-        if sha(Path(row["source_path"]))!=row["source_sha256"]: raise ValueError("Reviewed source changed")
+        path = row["source_path"]
+        if path not in digests: digests[path] = sha(Path(path))
+        if digests[path]!=row["source_sha256"]: raise ValueError("Reviewed source changed")
     linked, bad=resolve_names(reviewed_rows,catalog);facts+=linked;rejected+=bad
     f=normalize(facts);f.to_parquet(output/"facts.parquet",index=False)
     pd.DataFrame(portal_rows).to_parquet(output/"transfers.parquet",index=False)

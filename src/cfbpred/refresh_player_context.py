@@ -44,7 +44,7 @@ def refresh(source,reviewed,output,raw=None,train=True,year=2026):
     facts=json.loads(reviewed_bytes);issues=[]
     from cfbpred.conference_availability import collect, load_facts
     collect()
-    extra,bad=load_facts(schedule)
+    extra,bad=load_facts(schedule,latest_only=True)
     facts.extend(extra);issues.extend(bad)
     # Programs outside the official conference feeds (Sun Belt, CUSA, Mountain
     # West, Pac-12, independents) and games the feeds missed: Covers captures,

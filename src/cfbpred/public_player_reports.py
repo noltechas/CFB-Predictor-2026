@@ -81,6 +81,13 @@ def sec_current(archive,schedule):
     meta=json.loads(archive.with_suffix(".json.source.json").read_text())
     observed=pd.Timestamp(meta["observed_at"])
     games=schedule.copy();games["kick"]=pd.to_datetime(games.kick,utc=True)
+    # Hoisted out of the per-report/per-row loops: re-formatting 48k schedule
+    # dates per report and re-hashing a 10 MB archive per row made the nightly
+    # re-read of every captured report take most of step 6.
+    local_days=games.kick.dt.tz_convert("America/Chicago").dt.strftime("%Y-%m-%d")
+    schedule_teams=set(games.home_team)|set(games.away_team)
+    conference=meta.get("params",{}).get("conference")
+    digest=sha(archive);source_path=str(archive.resolve())
     facts,quarantine=[],[]
     for report in json.loads(archive.read_text()).values():
         if report.get("ReportType")=="Report Pending":
@@ -88,10 +95,8 @@ def sec_current(archive,schedule):
             continue
         game_date=report.get("footer",{}).get("date")
         from cfbpred.conference_availability import team_name
-        schedule_teams=set(games.home_team)|set(games.away_team)
-        conference=meta.get("params",{}).get("conference")
         reported_teams={team_name(t["teamDisplayName"],schedule_teams,conference) for t in report.get("games",[])}
-        matches=games[(games.kick.dt.tz_convert("America/Chicago").dt.strftime("%Y-%m-%d")==game_date)
+        matches=games[(local_days==game_date)
                       &games.home_team.isin(reported_teams)&games.away_team.isin(reported_teams)]
         if len(matches)!=1:
             quarantine.append(dict(reason="unmatched_sec_game",game_date=game_date));continue
@@ -112,7 +117,7 @@ def sec_current(archive,schedule):
                      game_id=int(game.game_id),kind="availability",value=status,
                      known_at=observed.isoformat(),effective_at=observed.isoformat(),
                      valid_until=(game.kick+pd.Timedelta(days=1)).isoformat(),
-                     source_path=str(archive.resolve()),source_sha256=sha(archive),source_url=meta["url"],
+                     source_path=source_path,source_sha256=digest,source_url=meta["url"],
                      observed_at=observed.isoformat(),raw_status=raw_status,timing_assumed=False,
                      timing_basis="Actual retrieval of public report before kickoff; not a scheduled publication time"))
     return facts,quarantine

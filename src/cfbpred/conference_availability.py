@@ -182,8 +182,47 @@ def current_facts(path, schedule):
     return sec_current(path, schedule)
 
 
-def load_facts(schedule, root=ROOT, allow_assumed=True):
-    """Read all captured archives so removed upstream weeks remain available."""
+def latest_retrievals(facts):
+    """Drop re-retrievals the dated timeline can never apply.
+
+    Every capture of an unchanged report restamps each row with its retrieval
+    time, so the same status arrives once per capture (37 copies of one Big Ten
+    report by 2026-09-25). A game-scoped status applies to one kickoff, and
+    ``compile_arrays`` keeps the latest eligible fact before it, so older
+    retrievals of a player-game only matter as fallbacks. Walk back from the
+    newest retrieval and stop at the first one that cannot be discarded
+    downstream: rows that agree, from a real capture, not stamped at kickoff
+    minus 30 minutes. Every source that assumes timing assumes exactly T-30, so
+    only there can another source's evidence tie with these rows and void both
+    (``compile_arrays`` rejects equal-time disagreements). Real captures carry
+    microsecond timestamps that no other source shares. Everything a tie
+    rejection could fall back to is therefore kept.
+    """
+    from cfbpred.player_timeline import name_key
+    groups = {}
+    for i, row in enumerate(facts):
+        key = (row["season"], row["team"], name_key(row["name"]), row["game_id"], row["kind"])
+        groups.setdefault(key, {}).setdefault(pd.Timestamp(row["known_at"]), []).append(i)
+    keep = set()
+    for levels in groups.values():
+        for known in sorted(levels, reverse=True):
+            rows = [facts[i] for i in levels[known]]
+            keep.update(levels[known])
+            # Both loaders set valid_until to kickoff + 1 day.
+            at_assumed_time = any(known == pd.Timestamp(r["valid_until"]) - pd.Timedelta(days=1, minutes=30)
+                                  for r in rows)
+            if (len({r["value"] for r in rows}) == 1 and not at_assumed_time
+                    and not any(r.get("timing_assumed") for r in rows)):
+                break
+    return [row for i, row in enumerate(facts) if i in keep]
+
+
+def load_facts(schedule, root=ROOT, allow_assumed=True, latest_only=False):
+    """Read all captured archives so removed upstream weeks remain available.
+
+    ``latest_only`` collapses repeated captures (see ``latest_retrievals``).
+    Historical rebuilds leave it off so their pinned artifacts stay byte-identical.
+    """
     facts, issues, seen = [], [], set()
     fixture_index = build_fixture_index(schedule)
     for manifest in sorted(root.glob("*/manifest.json")):
@@ -199,7 +238,7 @@ def load_facts(schedule, root=ROOT, allow_assumed=True):
                 key = tuple(str(row.get(k)) for k in ("game_id", "team", "name", "value", "known_at", "source_url"))
                 if key not in seen:
                     seen.add(key); facts.append(row)
-    return facts, issues
+    return (latest_retrievals(facts) if latest_only else facts), issues
 
 
 if __name__ == "__main__":

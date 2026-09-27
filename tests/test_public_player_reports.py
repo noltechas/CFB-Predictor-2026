@@ -38,3 +38,25 @@ def test_postgame_article_revision_is_excluded_even_with_pregame_publication(tmp
     row['modified_gmt']='2024-09-01T12:00:00';p.write_text(json.dumps([row]))
     facts,issues=dated_articles(p,games)
     assert len(facts)==2 and facts[0]['known_at']=='2024-09-01T12:00:00+00:00'
+
+
+def test_report_name_cells_drop_printed_position_and_jersey():
+    from cfbpred.public_player_reports import report_name
+    assert report_name('QB #12 Cole Bergeron')==('Cole Bergeron','QB','12')
+    assert report_name('WR #3 DeAndre Moore Jr.')==('DeAndre Moore Jr.','WR','3')
+    assert report_name('N/S #21 Al Brown')==('Al Brown','N/S','21')
+    assert report_name('S CJ Christian')==('CJ Christian','S',None)
+    # Plain names, including ones opening with capital initials, are untouched.
+    assert report_name('CJ Smith')==('CJ Smith',None,None)
+    assert report_name('Robert "Tre" Jones III')==('Robert "Tre" Jones III',None,None)
+
+
+def test_prefixed_report_rows_resolve_to_the_player(tmp_path):
+    p=tmp_path/'b10.json';p.with_suffix('.json.source.json').write_text(json.dumps(dict(observed_at='2026-09-25T12:00:00Z',url='https://example.org')))
+    report=dict(ReportType='Initial',footer=dict(date='2026-09-26'),
+                games=[dict(teamDisplayName='A',rows=[dict(name='QB #12 Cole Bergeron',status='Out')]),dict(teamDisplayName='B',rows=[])])
+    p.write_text(json.dumps({'one':report}))
+    games=pd.DataFrame([dict(game_id=1,season=2026,home_team='A',away_team='B',kick='2026-09-26T19:00:00Z')])
+    facts,_=sec_current(p,games)
+    assert facts[0]['name']=='Cole Bergeron' and facts[0]['reported_name']=='QB #12 Cole Bergeron'
+    assert facts[0]['reported_position']=='QB' and facts[0]['jersey']=='12'

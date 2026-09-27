@@ -72,6 +72,23 @@ def dated_articles(archive,schedule,revision_times=None):
     return facts,rejected
 
 
+# HD Intelligence current-week reports (SEC, Big Ten, Big 12, ACC, American)
+# print "QB #12 Cole Bergeron" in the name cell, and a few "S CJ Christian".
+# Unstripped, no 2026 game-week report row ever matched a roster name.
+REPORT_NAME=re.compile(r"^(?P<position>[A-Z]{1,4}(?:/[A-Z]{1,2})?)\s+(?:#(?P<jersey>\d{1,3})\s+)?(?P<name>\S.*)$")
+# Without a jersey the leading token is only taken as a position when it is one
+# the publisher uses, so a plain name such as "CJ Smith" is never cut.
+REPORT_POSITIONS=frozenset("ATH C CB DB DE DL DS DT EDG FB ILB IOL JCK K LB LS N/S NB NCK NG OG OL OLB OT P P/K QB RB S SB STR TE WR".split())
+
+
+def report_name(raw):
+    """Return (player name, printed position, jersey) from a report name cell."""
+    raw=str(raw).strip();m=REPORT_NAME.match(raw)
+    if m and (m["jersey"] is not None or m["position"] in REPORT_POSITIONS):
+        return m["name"].strip(),m["position"],m["jersey"]
+    return raw,None,None
+
+
 def sec_current(archive,schedule):
     """Read the observed public SEC schema, using retrieval as knowledge time.
 
@@ -113,7 +130,9 @@ def sec_current(archive,schedule):
                     # for explicit encoding; never convert them into full out.
                     quarantine.append(dict(reason="status_requires_explicit_encoding",raw=row,team=team["teamDisplayName"]));continue
                 if not row.get("name"):raise ValueError("SEC player row has no name")
-                facts.append(dict(name=row["name"],team=team_name(team["teamDisplayName"],schedule_teams,conference),season=int(game.season),
+                name,printed_position,jersey=report_name(row["name"])
+                facts.append(dict(name=name,reported_name=row["name"],reported_position=printed_position,jersey=jersey,
+                     team=team_name(team["teamDisplayName"],schedule_teams,conference),season=int(game.season),
                      game_id=int(game.game_id),kind="availability",value=status,
                      known_at=observed.isoformat(),effective_at=observed.isoformat(),
                      valid_until=(game.kick+pd.Timedelta(days=1)).isoformat(),

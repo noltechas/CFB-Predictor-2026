@@ -1,0 +1,61 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "./run_web.sh",
+      "runtimeArgs": [
+        "8788"
+      ],
+      "port": 8788
+    },
+    {
+      "name": "dashboard-alt",
+      "runtimeExecutable": "./run_web.sh",
+      "runtimeArgs": [
+        "8791"
+      ],
+      "port": 8791
+    },
+    {
+      "name": "dashboard-3",
+      "runtimeExecutable": "./run_web.sh",
+      "runtimeArgs": [
+        "8794"
+      ],
+      "port": 8794
+    },
+    {
+      "name": "ff-slate",
+      "runtimeExecutable": "/Users/chasnolte/IdeaProjects/FF-Predictor-2026/.venv/bin/python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8797",
+        "--directory",
+        "/Users/chasnolte/IdeaProjects/FF-Predictor-2026/web"
+      ],
+      "port": 8797
+    },
+    {
+      "name": "mobile-storybook",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "storybook:web"
+      ],
+      "cwd": "mobile",
+      "port": 8085
+    },
+    {
+      "name": "mobile-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "web"
+      ],
+      "cwd": "mobile",
+      "port": 8084
+    }
+  ]
+}

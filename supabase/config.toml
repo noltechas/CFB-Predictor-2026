@@ -1,0 +1,5 @@
+project_id = "CFB-Predictor-2026"
+
+[functions.live-scorer]
+verify_jwt = true
+static_files = ["./model/weights.bin", "./model/weights.json"]

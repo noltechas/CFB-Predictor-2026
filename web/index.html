@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fourth Down Engine</title>
+<meta name="description" content="Pure-DNN college football predictions, measured against the Vegas closing line.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231D6F42'/%3E%3Ctext x='16' y='22' font-family='Arial Black,sans-serif' font-size='15' font-weight='900' fill='%23F7F6F2' text-anchor='middle'%3E4D%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,300..900;1,62..125,300..900&family=Spline+Sans+Mono:ital,wght@0,300..700;1,300..700&display=swap">
+<link rel="stylesheet" href="./styles.css">
+<script>
+/* Set theme before first paint: explicit choice wins, else system. */
+(() => {
+  let t = null;
+  try { t = localStorage.getItem("fde-theme"); } catch (e) {}
+  if (t !== "light" && t !== "dark")
+    t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+})();
+</script>
+</head>
+<body>
+
+<header id="topbar">
+  <nav class="tabs" aria-label="Pages">
+    <a href="#slate" id="tab-slate" class="tab" aria-current="page">Slate</a>
+    <a href="#results" id="tab-results" class="tab">Results</a>
+    <a href="#model" id="tab-model" class="tab">Model</a>
+  </nav>
+
+  <nav class="controls" id="slate-controls" aria-label="Season and week">
+    <label class="select-wrap">
+      <span class="select-label">Season</span>
+      <select id="season" aria-label="Season"></select>
+    </label>
+    <label class="select-wrap">
+      <span class="select-label">Week</span>
+      <select id="week" aria-label="Week"></select>
+    </label>
+  </nav>
+
+  <div class="topbar-right">
+    <div class="run-chip" id="run-chip" title="Latest model run">
+      <span class="run-dot" id="run-dot" aria-hidden="true"></span>
+      <span class="run-text" id="run-text">connecting…</span>
+    </div>
+    <button id="theme-toggle" class="theme-toggle" type="button"
+            aria-label="Switch color theme">
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+        <g class="icon-sun">
+          <circle cx="10" cy="10" r="4.2" fill="currentColor"/>
+          <g stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <line x1="10" y1="1.5" x2="10" y2="3.6"/><line x1="10" y1="16.4" x2="10" y2="18.5"/>
+            <line x1="1.5" y1="10" x2="3.6" y2="10"/><line x1="16.4" y1="10" x2="18.5" y2="10"/>
+            <line x1="4" y1="4" x2="5.5" y2="5.5"/><line x1="14.5" y1="14.5" x2="16" y2="16"/>
+            <line x1="16" y1="4" x2="14.5" y2="5.5"/><line x1="5.5" y1="14.5" x2="4" y2="16"/>
+          </g>
+        </g>
+        <path class="icon-moon" fill="currentColor"
+              d="M17 11.6A7.5 7.5 0 0 1 8.4 3 7.5 7.5 0 1 0 17 11.6Z"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<section id="results-page" hidden aria-label="Aggregate results">
+  <div class="results-head">
+    <div>
+      <h2 class="results-title">Model vs. the closing line</h2>
+      <p class="results-sub">Every game since 2013 with a recorded closing spread, both judged
+      against what actually happened. Historical numbers are retrospective reconstructions
+      from the latest fitted model, not as-issued forecasts; they do not claim complete
+      historical availability coverage. Held-out games are the honest number — the model
+      never trained on them.</p>
+    </div>
+    <div class="results-controls">
+      <div class="seg" role="tablist" aria-label="Season scope">
+        <button class="seg-btn" data-season="2026" role="tab">2026 season</button>
+        <button class="seg-btn" data-season="all" role="tab">All seasons</button>
+      </div>
+      <div class="seg" role="tablist" aria-label="Division">
+        <button class="seg-btn" data-rdiv="all" role="tab">All</button>
+        <button class="seg-btn" data-rdiv="fbs" role="tab">FBS</button>
+        <button class="seg-btn" data-rdiv="fcs" role="tab">FCS</button>
+      </div>
+      <div class="seg" role="tablist" aria-label="Data split">
+        <button class="seg-btn" data-split="held" role="tab">Held-out</button>
+        <button class="seg-btn" data-split="train" role="tab">In-sample</button>
+        <button class="seg-btn" data-split="all" role="tab">All games</button>
+      </div>
+    </div>
+  </div>
+  <div id="results-body"><div class="loading" role="status" style="padding:90px 20px">
+    <span class="spinner" aria-hidden="true"></span>
+    <span class="loading-label">Loading the ledger</span></div></div>
+</section>
+
+<section id="model-page" hidden aria-label="Model architecture">
+  <div id="model-body"><div class="loading" role="status" style="padding:90px 20px">
+    <span class="spinner" aria-hidden="true"></span>
+    <span class="loading-label">Loading the model card</span></div></div>
+</section>
+
+<div id="layout">
+  <aside id="rail" aria-label="Games this week">
+    <div class="rail-head">
+      <div class="rail-title-row">
+        <h2 class="rail-title" id="rail-title">Slate</h2>
+        <span class="rail-count" id="rail-count"></span>
+      </div>
+      <div class="week-ledger" id="week-ledger" aria-label="Model record this week"></div>
+      <input id="search" class="search" type="search" placeholder="Filter teams…"
+             autocomplete="off" spellcheck="false" aria-label="Filter games by team">
+      <div class="seg rail-sort" id="rail-sort" role="tablist" aria-label="Sort games">
+        <button class="seg-btn" data-sort="kick" role="tab" aria-selected="true">Kickoff</button>
+        <button class="seg-btn" data-sort="edge" role="tab" aria-selected="false">Biggest edge</button>
+      </div>
+      <div class="seg rail-sort" id="rail-div" role="tablist" aria-label="Filter by division">
+        <button class="seg-btn" data-div="all" role="tab" aria-selected="true">All</button>
+        <button class="seg-btn" data-div="fbs" role="tab" aria-selected="false">FBS</button>
+        <button class="seg-btn" data-div="fcs" role="tab" aria-selected="false">FCS</button>
+      </div>
+    </div>
+    <div id="game-list" role="listbox" aria-label="Game list"></div>
+  </aside>
+
+  <main id="detail" tabindex="-1">
+    <div class="detail-empty" id="detail-empty">
+      <div class="empty-mark" aria-hidden="true">4D</div>
+      <p>Select a game to compare the model’s call<br>with the closing line.</p>
+    </div>
+    <div id="detail-body" hidden></div>
+  </main>
+</div>
+
+<footer id="colophon">
+  <p>Every number is read off one predicted margin distribution — win probability is its mass
+  above zero, the projected score its median. No Elo, no ratings, no lines feed the model;
+  the closing line appears here strictly as the benchmark.</p>
+</footer>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

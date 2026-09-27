@@ -1,0 +1,132 @@
+{
+  "observed_at": "2026-09-21T22:32:29.087179+00:00",
+  "model_versions": {
+    "player-sequence-tabm16-v2": 409
+  },
+  "fbs_involved": {
+    "n": 260,
+    "model_mae": 12.535961557692309,
+    "market_mae": 11.667307692307693,
+    "gap": 0.8686538653846153,
+    "model_winners": 225,
+    "market_winners": 230,
+    "ats_wins": 133,
+    "ats_graded": 256
+  },
+  "fbs_vs_fbs": {
+    "n": 157,
+    "model_mae": 11.515802579617835,
+    "market_mae": 10.977707006369426,
+    "gap": 0.5380955732484075,
+    "model_winners": 127,
+    "market_winners": 131,
+    "ats_wins": 82,
+    "ats_graded": 153
+  },
+  "fbs_vs_other": {
+    "n": 103,
+    "model_mae": 14.090961165048546,
+    "market_mae": 12.718446601941748,
+    "gap": 1.372514563106796,
+    "model_winners": 98,
+    "market_winners": 99,
+    "ats_wins": 51,
+    "ats_graded": 103
+  },
+  "other_vs_other": {
+    "n": 149,
+    "model_mae": 12.285620912751678,
+    "market_mae": 11.90268456375839,
+    "gap": 0.3829363489932887,
+    "model_winners": 114,
+    "market_winners": 116,
+    "ats_wins": 79,
+    "ats_graded": 148
+  },
+  "fbs_vs_fbs_by_week": {
+    "1": {
+      "n": 51,
+      "model_mae": 15.358325490196078,
+      "market_mae": 13.705882352941176,
+      "gap": 1.6524431372549018,
+      "model_winners": 42,
+      "market_winners": 44,
+      "ats_wins": 22,
+      "ats_graded": 49
+    },
+    "2": {
+      "n": 49,
+      "model_mae": 10.611003469387756,
+      "market_mae": 10.826530612244898,
+      "gap": -0.21552714285714306,
+      "model_winners": 36,
+      "market_winners": 38,
+      "ats_wins": 27,
+      "ats_graded": 49
+    },
+    "3": {
+      "n": 57,
+      "model_mae": 8.85556552631579,
+      "market_mae": 8.666666666666666,
+      "gap": 0.18889885964912254,
+      "model_winners": 49,
+      "market_winners": 49,
+      "ats_wins": 33,
+      "ats_graded": 55
+    }
+  },
+  "fbs_involved_by_week": {
+    "1": {
+      "n": 99,
+      "model_mae": 14.779769696969696,
+      "market_mae": 13.570707070707071,
+      "gap": 1.209062626262626,
+      "model_winners": 87,
+      "market_winners": 89,
+      "ats_wins": 46,
+      "ats_graded": 97
+    },
+    "2": {
+      "n": 86,
+      "model_mae": 11.92106581395349,
+      "market_mae": 11.319767441860465,
+      "gap": 0.6012983720930231,
+      "model_winners": 72,
+      "market_winners": 75,
+      "ats_wins": 45,
+      "ats_graded": 86
+    },
+    "3": {
+      "n": 75,
+      "model_mae": 10.279215266666666,
+      "market_mae": 9.553333333333333,
+      "gap": 0.7258819333333332,
+      "model_winners": 66,
+      "market_winners": 66,
+      "ats_wins": 42,
+      "ats_graded": 73
+    }
+  },
+  "prediction_columns": [
+    "run_id",
+    "game_id",
+    "season",
+    "split",
+    "home_win_prob",
+    "pred_margin",
+    "pred_total",
+    "pred_home_pts",
+    "pred_away_pts",
+    "model_version"
+  ],
+  "line_columns": [
+    "game_id",
+    "provider",
+    "spread",
+    "spread_open",
+    "over_under",
+    "over_under_open",
+    "home_moneyline",
+    "away_moneyline"
+  ]
+}

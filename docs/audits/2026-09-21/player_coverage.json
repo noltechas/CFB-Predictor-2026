@@ -1,0 +1,23 @@
+{
+  "snapshot": "/Users/chasnolte/IdeaProjects/CFB-Predictor-2026/models/player_sequence_production/refreshes/20260920T122506160000Z",
+  "fbs_teams": 138,
+  "fbs_players": 15792,
+  "scouting_known": 9606,
+  "prior_college_box_history": 6997,
+  "observed_prior_other_program_production": 3366,
+  "unknown_input_position": 5914,
+  "uncertain_identities": 2,
+  "unknown_position_share": 0.37449341438703143,
+  "scouting_share": 0.6082826747720365,
+  "prior_history_share": 0.44307244174265453,
+  "unknown_position_current_production_share": {
+    "att": 0.1582675242204673,
+    "pass_yds": 0.15427068556695694,
+    "rush_att": 0.2707760413173251,
+    "rush_yds": 0.2785511109889657,
+    "rec": 0.3050012629451882,
+    "rec_yds": 0.30096262447283617,
+    "tackles": 0.2836162002173017,
+    "fgm": 0.47890295358649787
+  }
+}

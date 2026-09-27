@@ -552,7 +552,11 @@ def generate(season: int, *, batch_size: int = 1024, preseason: bool = False) ->
     active_path = MODELS / "player_sequence_production/active.json"
     if active_path.exists():
         active = json.loads(active_path.read_text())
-        if (active.get("architecture"), active.get("variant")) in {("architecture_research_v1", "tabm16"), ("player_full_context_v1", "full_context")}:
+        # Every full-context variant (full_context, full_context_v2, ...) shares one
+        # scoring path; matching the variant name exactly let v2 fall through to the
+        # retired raw-DNN rankings, whose team vocabulary no longer matches.
+        if (active.get("architecture") == "player_full_context_v1"
+                or (active.get("architecture"), active.get("variant")) == ("architecture_research_v1", "tabm16")):
             return generate_player(season, batch_size=batch_size, preseason=preseason)
     return generate_raw(season, batch_size=batch_size, preseason=preseason)
 

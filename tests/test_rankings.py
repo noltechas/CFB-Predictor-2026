@@ -289,3 +289,21 @@ def test_replay_records_use_frozen_restored_schedule(tmp_path, monkeypatch):
     assert result["catalog"].wins.tolist() == [1, 0]
     assert result["history"][:, :, -1].sum() == 2
     assert result["source_week"] == 21
+
+
+@pytest.mark.parametrize("architecture, variant, expected", [
+    ("player_full_context_v1", "full_context", "player"),
+    ("player_full_context_v1", "full_context_v2", "player"),
+    ("architecture_research_v1", "tabm16", "player"),
+    ("raw_dnn", "delta", "raw"),
+])
+def test_generate_dispatches_every_full_context_variant_to_player_model(
+        tmp_path, monkeypatch, architecture, variant, expected):
+    import cfbpred.rankings as rankings
+    active = tmp_path / "player_sequence_production/active.json"
+    active.parent.mkdir(parents=True)
+    active.write_text(json.dumps({"architecture": architecture, "variant": variant}))
+    monkeypatch.setattr(rankings, "MODELS", tmp_path)
+    monkeypatch.setattr(rankings, "generate_player", lambda *a, **kw: "player")
+    monkeypatch.setattr(rankings, "generate_raw", lambda *a, **kw: "raw")
+    assert rankings.generate(2026) == expected

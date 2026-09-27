@@ -12,6 +12,10 @@
 # repaired release automatically takes precedence over overlapping games.
 set -euo pipefail
 cd "$(dirname "$0")"
+# Hold the Mac awake for exactly this run: launchd often fires jobs inside a
+# ~45 s maintenance DarkWake, and the Mac re-sleeping mid-COPY killed the
+# 2026-09-26/27 nightlies. -s (system sleep, on AC) is what holds a DarkWake.
+caffeinate -i -s -w $$ &
 set -a; source .env; set +a
 
 # Exclusive access to the publish pipeline, SHARED with refresh_scores.sh:

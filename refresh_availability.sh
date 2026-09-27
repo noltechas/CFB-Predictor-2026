@@ -1,6 +1,10 @@
 #!/bin/zsh
 set -euo pipefail
 cd "$(dirname "$0")"
+# Hold the Mac awake for exactly this run: launchd often fires jobs inside a
+# ~45 s maintenance DarkWake, and the Mac re-sleeping mid-COPY killed the
+# 2026-09-26/27 nightlies. -s (system sleep, on AC) is what holds a DarkWake.
+caffeinate -i -s -w $$ &
 set -a; source .env; set +a
 LOCK=${CFB_PUBLISH_LOCK:-/tmp/cfbpred_publish.lock}
 if ! mkdir "$LOCK" 2>/dev/null; then

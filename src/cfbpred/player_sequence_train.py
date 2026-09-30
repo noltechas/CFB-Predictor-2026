@@ -21,8 +21,21 @@ def predict(model,d,indices,device,batch_size=128):
     return torch.cat(margins),torch.cat(totals)
 
 
+def recency_weights(seasons,train_indices,half_life):
+    """Per-game loss weights 0.5**((latest training season - season)/half_life), mean 1 over training."""
+    seasons=np.asarray(seasons,float);latest=seasons[np.asarray(train_indices)].max()
+    w=0.5**((latest-seasons)/float(half_life))
+    return torch.tensor(w/w[np.asarray(train_indices)].mean(),dtype=torch.float32)
+
+
+def _ce(logits,targets,w):
+    # soft_ce normalises weights within the micro-batch; rescaling by the batch's mean weight
+    # turns that into the global weighted mean, so an all-old batch really counts for less
+    return soft_ce(logits,targets) if w is None else soft_ce(logits,targets,w)*w.mean()
+
+
 def fit(model,d,device,train_indices,val_indices,fixed_epochs=None,max_epochs=200,patience=20,
-        micro_batch_size=128,aux_weight=1.,log_path=None):
+        micro_batch_size=128,aux_weight=1.,log_path=None,sample_weight=None):
     train_indices,val_indices=np.asarray(train_indices),np.asarray(val_indices)
     if (d["G_season"][train_indices]>=2026).any() or not d["G_labeled"][train_indices].all():
         raise ValueError("Invalid training labels")
@@ -47,11 +60,12 @@ def fit(model,d,device,train_indices,val_indices,fixed_epochs=None,max_epochs=20
             for offset in range(0,len(full),micro_batch_size):
                 ids=full[offset:offset+micro_batch_size];j=torch.tensor(ids)
                 _,pm,pt=model.pregame(game_batch(d,j,device))
-                game_loss=soft_ce(pm,tm[j].to(device))+.5*soft_ce(pt,tt[j].to(device))
+                w=None if sample_weight is None else sample_weight[j].to(device)
+                game_loss=_ce(pm,tm[j].to(device),w)+.5*_ce(pt,tt[j].to(device),w)
                 loss=game_loss
                 head_weight=getattr(model.pre,"roster_head_weight",0.0)
                 if head_weight>0:
-                    roster_loss=soft_ce(model.pre.roster_margin_logits,tm[j].to(device))
+                    roster_loss=_ce(model.pre.roster_margin_logits,tm[j].to(device),w)
                     loss=loss+head_weight*roster_loss
                     aux_sum+=float(roster_loss.detach().cpu())*len(ids)
                 if model.pre.auxiliary:

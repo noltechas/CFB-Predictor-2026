@@ -50,6 +50,7 @@ def catalog_for(games: pd.DataFrame, season: int, ids: dict) -> pd.DataFrame:
 def result_inputs(catalog: pd.DataFrame, completed: pd.DataFrame, vocab: dict,
                   season: int, cutoff: pd.Timestamp, priors: dict):
     log = team_log(completed, keep_teams=set(catalog.team))
+    tpct_era = any(v.get("tpct_known") == 1.0 for v in priors.values())
     histories = np.zeros((len(catalog), N_HIST, 7), np.float32)
     opponents = np.zeros((len(catalog), N_HIST), np.int64)
     rows = []
@@ -67,6 +68,12 @@ def result_inputs(catalog: pd.DataFrame, completed: pd.DataFrame, vocab: dict,
                              ("sos_recruit", "recruit_pts_4c")):
             values = [priors.get(t, {}).get(key, np.nan) for t in current.opp]
             row[feature] = pd.Series(values, dtype=float).mean()
+        # same rule as features_raw.TalentPercentiles: in a season with published composites
+        # every non-FBS opponent counts 0.0, an FBS opponent its within-season percentile
+        if tpct_era:
+            values = [0.0 if div != "fbs" else priors.get(t, {}).get("tpct_talent", np.nan)
+                      for t, div in zip(current.opp, current.opp_div)]
+            row["sos_tpct_talent"] = pd.Series(values, dtype=float).mean()
         for slot, r in enumerate(d.tail(N_HIST).iloc[::-1].itertuples()):
             histories[i, slot] = [r.pf / 30, r.pa / 30, r.was_home,
                                   float(r.opp_div == "fbs"),

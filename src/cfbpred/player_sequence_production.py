@@ -18,7 +18,7 @@ import pandas as pd
 import torch
 
 from cfbpred.config import CURRENT_SEASON, MODELS, PQ, ROOT
-from cfbpred.ensemble import readouts
+from cfbpred.ensemble import median_readout, readouts
 from cfbpred.model import MARGIN_CENTRES, TOTAL_CENTRES, scores_from
 from cfbpred.player_experiment import load_inputs
 from cfbpred.player_sequence_fast_inputs import FastSequenceStore
@@ -32,7 +32,8 @@ CANDIDATE = MODELS / "experiments/architecture_research_20260907_v1/current_2026
 VERSION = "player-sequence-tabm16-v2"
 ARCHITECTURE = "architecture_research_v1"
 VARIANT = "tabm16"
-FULL_CONTEXT_VARIANTS = ("full_context", "full_context_rosterhead", "full_context_v2", "full_context_v3")
+FULL_CONTEXT_VARIANTS = ("full_context", "full_context_rosterhead", "full_context_v2", "full_context_v3",
+                         "full_context_v4", "full_context_v4_r4", "full_context_v4_r8")
 SUPPORTED = {
     ("player_sequence_v1", "context"),
     (ARCHITECTURE, VARIANT),
@@ -313,7 +314,11 @@ def score_snapshot(inputs: Path, players: Path, sequences: Path, output: Path,
     home, away = scores_from(torch.tensor(derived["mm"]), torch.tensor(derived["mt"]))
     frame = pd.DataFrame({
         "game_id": base["G_gid"][idx], "season": base["G_season"][idx],
-        "home_win_prob": derived["wp"], "pred_margin": derived["em"], "pred_total": derived["et"],
+        # Point numbers are the distribution's (interpolated) median, the MAE-optimal readout and
+        # the line at which the model's own P(cover) is 50%. The mean understated every backtest
+        # season (2021-25 margin MAE 12.566 mean vs 12.535 median; total 12.883 vs 12.786).
+        "home_win_prob": derived["wp"], "pred_margin": median_readout(pm, MARGIN_CENTRES),
+        "pred_total": median_readout(pt, TOTAL_CENTRES),
         "pred_home_pts": home.numpy().astype(int), "pred_away_pts": away.numpy().astype(int),
         "split": "test", "margin_pmf": pm.numpy().tolist(), "total_pmf": pt.numpy().tolist(),
         "snapshot_at": cutoff, "model": active["version"], "model_version": active["version"],
@@ -363,8 +368,9 @@ def audit_snapshot(inputs: Path, players: Path, sequences: Path, forecasts: Path
     if max_mass > 1e-5 or not torch.isfinite(pm).all() or not torch.isfinite(pt).all() or (pm < 0).any() or (pt < 0).any():
         raise ValueError("Production PMFs are invalid")
     derived = readouts(pm, pt)
+    derived["pred_margin"], derived["pred_total"] = median_readout(pm, MARGIN_CENTRES), median_readout(pt, TOTAL_CENTRES)
     max_readout = max(float(np.max(np.abs(frame[col].to_numpy() - derived[key])))
-                      for col, key in (("home_win_prob", "wp"), ("pred_margin", "em"), ("pred_total", "et")))
+                      for col, key in (("home_win_prob", "wp"), ("pred_margin", "pred_margin"), ("pred_total", "pred_total")))
     if max_readout > 1e-5:
         raise ValueError("Production readout differs from its PMF")
     roster = pd.read_parquet(players / "game_rosters.parquet").set_index(["game_id", "side"])

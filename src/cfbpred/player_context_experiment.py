@@ -22,10 +22,10 @@ from cfbpred.ensemble import readouts
 from cfbpred.model import discrete_crps
 from cfbpred.player_experiment import load_inputs
 from cfbpred.player_full_history import FullCareerStore
-from cfbpred.player_full_history_net import CONTEXT_VARIANTS, SCALAR_EXTRAS_BY_VARIANT, make
+from cfbpred.player_full_history_net import CONTEXT_VARIANTS, RECENCY_HALF_LIFE_BY_VARIANT, SCALAR_EXTRAS_BY_VARIANT, make
 from cfbpred import train as train_module
 from cfbpred.player_sequence_fast_inputs import FastSequenceStore
-from cfbpred.player_sequence_train import fit,predict
+from cfbpred.player_sequence_train import fit,predict,recency_weights
 from cfbpred.player_timeline import TimelineStore
 from cfbpred.pregame_experiments import save_json,sha,summarize,paired
 
@@ -83,6 +83,8 @@ def run(source,output,variant,year=2025,seed=0,threads=2,micro_batch=64,max_epoc
         plan["fixed_epochs"]=int(fixed_epochs)
         plan["epoch_source"]={"fixed":int(fixed_epochs),"reason":"shared backtest budget from the 2025 clean control"}
     plan["scalar_extras"]=list(SCALAR_EXTRAS_BY_VARIANT.get(variant,()))
+    half_life=RECENCY_HALF_LIFE_BY_VARIANT.get(variant)
+    if half_life is not None:plan["recency_half_life"]=half_life
     plan_path=output/"plan.json"
     if plan_path.exists() and json.loads(plan_path.read_text())!=plan:raise ValueError("Frozen experiment changed")
     save_json(plan_path,plan)
@@ -100,7 +102,8 @@ def run(source,output,variant,year=2025,seed=0,threads=2,micro_batch=64,max_epoc
         if epoch_source is None and fixed_epochs is None:
             torch.manual_seed(seed);np.random.seed(seed);model=network(dfit,variant)
             fit(model,dfit,torch.device("cpu"),np.flatnonzero(tr),np.flatnonzero(va),
-                max_epochs=max_epochs,patience=patience,micro_batch_size=micro_batch,log_path=output/"selection.json")
+                max_epochs=max_epochs,patience=patience,micro_batch_size=micro_batch,log_path=output/"selection.json",
+                sample_weight=None if half_life is None else recency_weights(base["G_season"],np.flatnonzero(tr),half_life))
             epochs=model.pre.selected_epochs;del model
         else:
             epochs=plan["fixed_epochs"]
@@ -108,7 +111,8 @@ def run(source,output,variant,year=2025,seed=0,threads=2,micro_batch=64,max_epoc
                        reason="Same training budget independently selected by the clean control; no revised article used for selection"))
         torch.manual_seed(seed);np.random.seed(seed);model=network(drefit,variant)
         fit(model,drefit,torch.device("cpu"),np.flatnonzero(refit),np.flatnonzero(va),fixed_epochs=epochs,
-            micro_batch_size=micro_batch,log_path=output/"refit.json")
+            micro_batch_size=micro_batch,log_path=output/"refit.json",
+            sample_weight=None if half_life is None else recency_weights(base["G_season"],np.flatnonzero(refit),half_life))
         ck=dict(architecture="player_full_context_v1",variant=variant,pregame_only=True,
                 state_dict={k:v.detach().cpu() for k,v in model.pre.state_dict().items()},
                 mu=drefit["mu"],sd=drefit["sd"],vocab=base["vocab"],scalar_cols=base["scalar_cols"],
@@ -118,6 +122,7 @@ def run(source,output,variant,year=2025,seed=0,threads=2,micro_batch=64,max_epoc
                 forecast_year=year,seed=seed,epochs=epochs,train_game_ids=base["G_gid"][refit],
                 train_max_season=int(base["G_season"][refit].max()),player_schema=base["player_store"].manifest,
                 scalar_extras=list(SCALAR_EXTRAS_BY_VARIANT.get(variant,())),
+                recency_half_life=half_life,
                 seconds=time.monotonic()-started,plan_sha256=sha(plan_path))
         torch.save(ck,checkpoint);del model
     # Reload the saved bundle for scoring, to test the actual forecast path.

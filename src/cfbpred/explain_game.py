@@ -62,6 +62,8 @@ EXACT = {
     "recruit_rank_best": "Best recruiting class rank", "coach_tenure": "Coach tenure at school",
     "coach_first_year": "First-year coach", "coach_career_games": "Coach career games",
     "coach_career_winpct": "Coach career win rate", "sos_talent": "Opponents faced: mean talent",
+    "tpct_talent": "Talent rank among FBS (247, percentile)", "tpct_known": "Talent rank published",
+    "sos_tpct_talent": "Opponents faced: mean talent rank",
     "sos_recruit": "Opponents faced: mean recruiting", "sos_fbs_share": "Share of opponents that were FBS",
     "qb_att_pg": "QB attempts per game", "qb_ypa": "QB yards per attempt", "qb_int_rate": "QB interception rate",
     "qb_sack_rate": "QB sack rate", "qb_td_rate": "QB touchdown rate", "qb_changed": "Starting QB changed",
@@ -100,7 +102,7 @@ def _words(body: str) -> str:
 # happens to be exactly 0 or 1 — an undefeated team's win rate is 1.000, not "yes".
 FLAG_KEYS = {"is_home_site", "home_is_fcs", "opp_is_fcs", "is_conf_game", "is_postseason",
              "qb_changed", "qb_known", "coach_first_year", "retp_qb1", "av_qb_played_last",
-             "pre_qb_passer_known", "pre_qb_roster_known"}
+             "pre_qb_passer_known", "pre_qb_roster_known", "tpct_known"}
 
 
 def value_format(col: str) -> str:

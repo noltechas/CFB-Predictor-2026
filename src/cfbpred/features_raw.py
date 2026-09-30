@@ -349,7 +349,8 @@ def qb_features(con) -> pd.DataFrame:
                                        "qb_td_rate", "qb_changed", "qb_known"])
 
 
-def schedule_context(log: pd.DataFrame, tal: pd.DataFrame) -> pd.DataFrame:
+def schedule_context(log: pd.DataFrame, tal: pd.DataFrame,
+                     tpct: "TalentPercentiles | None" = None) -> pd.DataFrame:
     """Whom the season-to-date stats were compiled against — raw averaging of
     allowed inputs, no fitted rating anywhere.
 
@@ -357,6 +358,10 @@ def schedule_context(log: pd.DataFrame, tal: pd.DataFrame) -> pd.DataFrame:
       sos_talent     mean preseason talent composite of opponents faced
       sos_recruit    mean 4-class recruiting points of opponents faced
       sos_fbs_share  share of those opponents that were FBS
+      sos_tpct_talent  mean within-season talent percentile of opponents
+                     faced (TalentPercentiles: non-FBS opponents count 0.0 in
+                     every season, so the "played a cupcake" signal survives
+                     the 2024 end of FCS composites); only with `tpct`
 
     Point-in-time: talent/recruiting are preseason constants for the season
     being played, and the expanding mean is shifted one game back. A 6.5
@@ -367,19 +372,21 @@ def schedule_context(log: pd.DataFrame, tal: pd.DataFrame) -> pd.DataFrame:
                  "recruit_pts_4c": "opp_recruit"})
     m = log.merge(t, on=["season", "opp"], how="left")
     m["opp_is_fbs"] = (m["opp_div"] == "fbs").astype(float)
+    pairs = [("opp_talent", "sos_talent"), ("opp_recruit", "sos_recruit"),
+             ("opp_is_fbs", "sos_fbs_share")]
+    if tpct is not None:
+        m["opp_tpct"] = tpct.values(m["season"], m["opp"], m["opp_div"])
+        pairs.append(("opp_tpct", "sos_tpct_talent"))
     # an unplayed prior game contributed nothing to the stats being
     # contextualised — blank its opponent so the expanding mean skips it
     unplayed = m["pf"].isna() | m["pa"].isna()
-    m.loc[unplayed, ["opp_talent", "opp_recruit", "opp_is_fbs"]] = np.nan
+    m.loc[unplayed, [src for src, _ in pairs]] = np.nan
     m = m.sort_values(["team", "season", "kick"])
     grp = m.groupby(["team", "season"], sort=False)
-    for src, dst in (("opp_talent", "sos_talent"),
-                     ("opp_recruit", "sos_recruit"),
-                     ("opp_is_fbs", "sos_fbs_share")):
+    for src, dst in pairs:
         m[dst] = grp[src].transform(
             lambda s: s.expanding().mean().shift(1))
-    return m[["game_id", "team", "sos_talent", "sos_recruit",
-              "sos_fbs_share"]]
+    return m[["game_id", "team"] + [dst for _, dst in pairs]]
 
 
 # ------------------------------------------------- roster & coach raw facts
@@ -593,6 +600,53 @@ def talent_features() -> pd.DataFrame:
     return out.drop_duplicates(["season", "team"]).reset_index(drop=True)
 
 
+class TalentPercentiles:
+    """Within-season rank of the 247 composite among FBS rosters — one scale for every season.
+
+    The raw composite is not comparable across seasons. The CFBD series stops publishing
+    lower-division programs after 2023 (FCS coverage 71-86% through 2023, 0% from 2024),
+    and the 2024 values lift the FBS floor: the median team gained +38 in one year
+    against the usual +8-10, the bottom quartile +107 (Liberty 330 -> 570), while the top
+    barely moved. Raw inputs therefore told the network the power-conference/G5 gap had
+    shrunk from ~310 to ~205 exactly when it widened on the field, imputed every FCS side
+    at the pooled training mean (~410, a low-G5 roster), and let `sos_talent` silently
+    skip FCS opponents (an FCS team's schedule read as FBS-level: ~187 -> ~619).
+
+    The percentile keeps only the ordering each season supports. Every non-FBS program
+    is 0.0 — below every FBS roster — in every season the composite exists, never a
+    season-dependent guess; seasons before the composite (pre-2015) stay unknown.
+    Columns carrying this value are tagged `tpct` and are opt-in (train.EXCLUDED_SCALARS),
+    so checkpoints fitted on the raw composite read exactly the inputs they were trained on.
+    """
+
+    def __init__(self, tal: pd.DataFrame, divisions: dict):
+        t = tal.dropna(subset=["talent_composite"])
+        self.seasons = set(int(s) for s in t.season.unique())
+        fbs = t[[divisions.get((int(s), team)) == "fbs"
+                 for s, team in zip(t.season, t.team)]].copy()
+        fbs["pct"] = fbs.groupby("season").talent_composite.rank(pct=True, method="average")
+        self.pct = {(int(s), team): float(p) for s, team, p in zip(fbs.season, fbs.team, fbs.pct)}
+
+    @staticmethod
+    def divisions(g_all: pd.DataFrame) -> dict:
+        """(season, team) -> division as the schedule records it that season."""
+        parts = [g_all[["season", f"{s}_team", f"{s}_division"]].set_axis(["season", "team", "div"], axis=1)
+                 for s in ("home", "away")]
+        d = pd.concat(parts).dropna(subset=["div"]).drop_duplicates(["season", "team"], keep="last")
+        return {(int(s), team): dv for s, team, dv in zip(d.season, d.team, d["div"])}
+
+    def value(self, season, team, division) -> float:
+        season = int(season)
+        if season not in self.seasons:
+            return np.nan
+        if division != "fbs":
+            return 0.0
+        return self.pct.get((season, team), np.nan)
+
+    def values(self, seasons, teams, divisions) -> np.ndarray:
+        return np.array([self.value(s, t, d) for s, t, d in zip(seasons, teams, divisions)], float)
+
+
 def coach_features() -> pd.DataFrame:
     c = pd.read_parquet(CFBD / "coaches.parquet")
     rows = []
@@ -719,7 +773,8 @@ def main() -> None:
     ros = roster_features()
     coa = coach_features()
     rp = returning_production()
-    sos = schedule_context(log, tal)     # whom the stats were built against
+    tpct = TalentPercentiles(tal, TalentPercentiles.divisions(g_all))
+    sos = schedule_context(log, tal, tpct)   # whom the stats were built against
     # NOTE: aggregating these from g_all (FCS slates included) was measured
     # 2026-08-27 alongside the 20-game history — null on val and test — and
     # reverted to keep the store identical to the proven v16 configuration.
@@ -796,8 +851,11 @@ def main() -> None:
             on=["game_id", t], how="left")
         s2 = sos.rename(columns={"team": t})
         out = out.merge(s2.rename(columns={c: pre + c for c in (
-            "sos_talent", "sos_recruit", "sos_fbs_share")}),
+            "sos_talent", "sos_recruit", "sos_fbs_share", "sos_tpct_talent")}),
             on=["game_id", t], how="left")
+        # the side's own roster on the one cross-season scale (TalentPercentiles)
+        out[pre + "tpct_talent"] = tpct.values(out["season"], out[t], out[f"{side}_division"])
+        out[pre + "tpct_known"] = out[pre + "tpct_talent"].notna().astype(float)
         for tbl, keys in ((off, ["game_id"]), (dfn, ["game_id"]),
                           (qb, ["game_id"]), (box, ["game_id"]),
                           (av, ["game_id"]),

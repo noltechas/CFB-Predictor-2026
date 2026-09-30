@@ -53,6 +53,9 @@ EXCLUDED_SCALARS = (
     "wx_", "venue_grass", "venue_capacity", "kick_local_hour",
     "body_clock_shift", "h2h_", "qb_career_", "_ret_share",
     "new_upper_share", "wx_indoor_venue",
+    # cross-season talent percentiles (features_raw.TalentPercentiles): opt-in, so
+    # checkpoints fitted on the raw 247 composite keep exactly their inputs
+    "tpct",
 )
 
 ID_COLS = {"game_id", "season", "week", "home_team", "away_team",
@@ -77,14 +80,22 @@ N_BASE_STATE = len(BASE_STATE)
 
 # An experiment or a checkpoint may re-admit named EXCLUDED_SCALARS entries. The
 # purity check below still runs, so a banned column can never be re-admitted.
+# An entry "-<column>" instead DROPS that exact column (flags included), so a
+# variant can replace an input without changing what older checkpoints read.
 SCALAR_EXTRAS: tuple = ()
+
+
+def scalar_drops() -> set:
+    return {x[1:] for x in SCALAR_EXTRAS if x.startswith("-")}
 
 
 def scalar_columns(g: pd.DataFrame) -> list[str]:
     excluded = tuple(x for x in EXCLUDED_SCALARS if x not in SCALAR_EXTRAS)
+    drops = scalar_drops()
     cols = [c for c in g.columns if c not in ID_COLS
             and not c.endswith("_team")
-            and not any(x in c for x in excluded)]
+            and not any(x in c for x in excluded)
+            and c not in drops]
     bad = [c for c in cols
            if any(b in c.lower() for b in BANNED_SUBSTRINGS)]
     if bad:
@@ -119,6 +130,7 @@ def prep_scalars(g: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         g[flag] = g[probe].notna().astype(float) if probe in g.columns else 0.0
         if flag not in cols:
             cols.append(flag)
+    cols = [c for c in cols if c not in scalar_drops()]
     for c in cols:
         g[c] = pd.to_numeric(g[c], errors="coerce")
     return g, sorted(cols)

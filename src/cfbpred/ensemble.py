@@ -115,6 +115,20 @@ def ensemble_game_probs(models, d, dev, bs=4096):
     return pm_sum / len(models), pt_sum / len(models)
 
 
+def median_readout(p: torch.Tensor, centres: torch.Tensor) -> np.ndarray:
+    """Median of a binned PMF, interpolated within the bin that crosses 0.5.
+
+    Integer bins are read as uniform over [k - 0.5, k + 0.5], so the number stays
+    fractional (a spread-style "-2.4") while matching the bin median to within a bin."""
+    cdf = torch.cumsum(p, -1)
+    half = torch.full((p.shape[0], 1), 0.5, dtype=cdf.dtype)
+    k = torch.clamp(torch.searchsorted(cdf.contiguous(), half), 0, p.shape[-1] - 1).squeeze(-1)
+    rows = torch.arange(p.shape[0])
+    before = torch.where(k > 0, cdf[rows, (k - 1).clamp(min=0)], torch.zeros_like(k, dtype=cdf.dtype))
+    mass = p[rows, k].clamp(min=1e-12)
+    return (centres.to(p.dtype)[k] - 0.5 + ((0.5 - before) / mass).clamp(0, 1)).numpy()
+
+
 def readouts(pm: torch.Tensor, pt: torch.Tensor) -> dict:
     pos = (MARGIN_CENTRES > 0).float()
     cm = torch.cumsum(pm, -1)

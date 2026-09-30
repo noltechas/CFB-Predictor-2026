@@ -90,7 +90,7 @@ upcoming games; all changes came from newly captured availability reports.
 ## Artifacts
 
 `models/experiments/talent_recency_20260929/`: `decision_rule.json`, `decision.json`, `runs/`
-(60 fits), `stores/` (the shared store chain, 1.2 GB, needed only to reproduce), `run_queue.py`,
+(60 fits; the shared 1.2 GB store chain was deleted on Sept 30 to free disk — rebuild with the nightly's `refresh()` to reproduce), `run_queue.py`,
 `evaluate.py`, `leak_check.py`, `median_restatement.py`, `release.py` (unused staging path for a
 future qualifying variant). Local rollback: `models/player_sequence_production/promotions/20260930T021852398647Z/`.
 Database rollback: the newest `models/player_sequence_production/database_backups/` entry.

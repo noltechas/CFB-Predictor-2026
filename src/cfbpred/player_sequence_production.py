@@ -33,7 +33,12 @@ VERSION = "player-sequence-tabm16-v2"
 ARCHITECTURE = "architecture_research_v1"
 VARIANT = "tabm16"
 FULL_CONTEXT_VARIANTS = ("full_context", "full_context_rosterhead", "full_context_v2", "full_context_v3",
-                         "full_context_v4", "full_context_v4_r4", "full_context_v4_r8")
+                         "full_context_v4", "full_context_v4_r4", "full_context_v4_r8",
+                         "full_context_v5a", "full_context_v5b", "full_context_v5", "full_context_fcs100",
+                         "full_context_v2_nu", "full_context_v5a_nu", "full_context_v5b_nu", "full_context_v5_nu",
+                         "full_context_fcs100_nu",
+                         *(v + "_fcs" + nu for v in ("full_context_v5a", "full_context_v5b", "full_context_v5")
+                           for nu in ("", "_nu")))
 SUPPORTED = {
     ("player_sequence_v1", "context"),
     (ARCHITECTURE, VARIANT),

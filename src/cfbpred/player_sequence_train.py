@@ -35,7 +35,7 @@ def _ce(logits,targets,w):
 
 
 def fit(model,d,device,train_indices,val_indices,fixed_epochs=None,max_epochs=200,patience=20,
-        micro_batch_size=128,aux_weight=1.,log_path=None,sample_weight=None):
+        micro_batch_size=128,aux_weight=1.,log_path=None,sample_weight=None,fcs_share=.25):
     train_indices,val_indices=np.asarray(train_indices),np.asarray(val_indices)
     if (d["G_season"][train_indices]>=2026).any() or not d["G_labeled"][train_indices].all():
         raise ValueError("Invalid training labels")
@@ -53,7 +53,7 @@ def fit(model,d,device,train_indices,val_indices,fixed_epochs=None,max_epochs=20
     history=[]
     for ep in range(fixed_epochs if fixed_epochs is not None else max_epochs):
         start_time=time.monotonic();model.train()
-        sub=np.random.choice(fcs,int(len(fcs)*.25),replace=False) if len(fcs) else np.empty(0,np.int64)
+        sub=np.random.choice(fcs,int(len(fcs)*fcs_share),replace=False) if len(fcs) else np.empty(0,np.int64)
         perm=np.random.permutation(np.r_[fbs,sub]);aux_sum=0.;game_sum=0.
         for start in range(0,len(perm),2048):
             full=perm[start:start+2048];opt.zero_grad()

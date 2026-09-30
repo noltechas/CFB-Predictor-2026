@@ -101,10 +101,15 @@ ROSTER_HEAD_WEIGHT = 0.5   # roster-only margin loss, relative to the game loss
 #                           in place of the raw 247 composite, its missing flag and sos_talent
 # full_context_v4_r4/_r8  : v4, loss weighted toward recent seasons (half-life 4 / 8 seasons)
 TALENT_FIX_VARIANTS = {"full_context_v4", "full_context_v4_r4", "full_context_v4_r8"}
+# full_context_v5a        : v2 + offseason roster movement (portal in/out, draft departures; mvmt_)
+# full_context_v5b        : v2 + in-season head-coach change flags (cchg_)
+# full_context_v5         : v2 + both
+# full_context_fcs100     : v2 trained on every FCS-vs-FCS game each epoch (v2 samples 25%)
+MOVEMENT_VARIANTS = {"full_context_v5a", "full_context_v5b", "full_context_v5", "full_context_fcs100"}
 HEAD_VARIANTS = {"full_context_rosterhead", "full_context_v2", "full_context_v3",
-                 "full_context_gates", "full_context_extras", *TALENT_FIX_VARIANTS}
+                 "full_context_gates", "full_context_extras", *TALENT_FIX_VARIANTS, *MOVEMENT_VARIANTS}
 POOL_AVAILABLE_VARIANTS = {"full_context_v2", "full_context_v3", "full_context_gates", "full_context_extras",
-                           *TALENT_FIX_VARIANTS}
+                           *TALENT_FIX_VARIANTS, *MOVEMENT_VARIANTS}
 FAMILY_GATE_VARIANTS = {"full_context_gates"}
 # EXCLUDED_SCALARS entries a variant re-admits (train.SCALAR_EXTRAS while loading its data);
 # a "-<column>" entry drops that exact column instead
@@ -112,7 +117,30 @@ TALENT_FIX_SCALARS = ("tpct", "-h_talent_composite", "-a_talent_composite", "-h_
                       "-a_has_talent", "-h_sos_talent", "-a_sos_talent")
 SCALAR_EXTRAS_BY_VARIANT = {"full_context_extras": ("venue_grass", "venue_capacity", "kick_local_hour",
                                                     "body_clock_shift", "h2h_"),
-                            **{v: TALENT_FIX_SCALARS for v in TALENT_FIX_VARIANTS}}
+                            **{v: TALENT_FIX_SCALARS for v in TALENT_FIX_VARIANTS},
+                            "full_context_v5a": ("mvmt_",), "full_context_v5b": ("cchg_",),
+                            "full_context_v5": ("mvmt_", "cchg_")}
+# share of non-FBS-involved (FCS-vs-FCS) training games sampled into each epoch (default 0.25)
+FCS_SHARE_BY_VARIANT = {"full_context_fcs100": 1.0}
+# <variant>_nu: the same variant without h/a_upper_share. CFBD historical rosters carry calendar
+# years or final-career classes in `year`, so the share reads 1.0 for every team through 2015 and
+# falls to 0.47 by 2026 - an era marker, not experience (the player store already drops class).
+NO_UPPER = ("-h_upper_share", "-a_upper_share")
+for _v in ("full_context_v2", "full_context_v5a", "full_context_v5b", "full_context_v5", "full_context_fcs100"):
+    SCALAR_EXTRAS_BY_VARIANT[_v + "_nu"] = SCALAR_EXTRAS_BY_VARIANT.get(_v, ()) + NO_UPPER
+    if _v in FCS_SHARE_BY_VARIANT:
+        FCS_SHARE_BY_VARIANT[_v + "_nu"] = FCS_SHARE_BY_VARIANT[_v]
+NU_VARIANTS = {_v + "_nu" for _v in ("full_context_v2", "full_context_v5a", "full_context_v5b",
+                                      "full_context_v5", "full_context_fcs100")}
+# data arm + every FCS-vs-FCS game (the rule's combination arm), with and without upper_share
+for _v in ("full_context_v5a", "full_context_v5b", "full_context_v5"):
+    for _nu in ("", "_nu"):
+        _name = _v + "_fcs" + _nu
+        SCALAR_EXTRAS_BY_VARIANT[_name] = SCALAR_EXTRAS_BY_VARIANT[_v] + (NO_UPPER if _nu else ())
+        FCS_SHARE_BY_VARIANT[_name] = 1.0
+        NU_VARIANTS.add(_name)
+HEAD_VARIANTS |= NU_VARIANTS
+POOL_AVAILABLE_VARIANTS |= NU_VARIANTS
 # Training games are weighted 0.5 ** ((latest training season - season) / half_life), rescaled to
 # mean 1. Seasons are not exchangeable: FBS scoring fell from ~57-58 points (2014-20) to ~52 (2025)
 # and the gap between conference tiers keeps widening, while embeddings are static over 2001-2025.

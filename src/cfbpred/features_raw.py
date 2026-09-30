@@ -600,6 +600,94 @@ def talent_features() -> pd.DataFrame:
     return out.drop_duplicates(["season", "team"]).reset_index(drop=True)
 
 
+PORTAL_FIRST_SEASON = 2021   # CFBD /player/portal coverage
+
+
+def roster_movement_features(g_all: pd.DataFrame) -> pd.DataFrame:
+    """Per (season, team): the offseason's transfers in and out, and players lost to the draft.
+
+    Raw facts and human scouting of players only (247 transfer stars/ratings; NFL draft slots).
+    A transfer counts toward season Y (CFBD's `season`) for a team only when it is dated
+    before THAT team's first kickoff of Y, so nothing reported after the opener enters.
+    The draft in year Y takes players off season Y-1 rosters in April — before Y begins.
+    Tagged `mvmt_` and opt-in (train.EXCLUDED_SCALARS). Unrated transfers still count in
+    `_n`; their stars/rating contribute 0. Portal columns are unknown (NaN) before 2021.
+    """
+    parts = [g_all[["season", "kick", f"{s}_team"]].set_axis(["season", "kick", "team"], axis=1)
+             for s in ("home", "away")]
+    opener = pd.concat(parts).groupby(["season", "team"]).kick.min()
+    rows = []
+    portal_path, draft_path = CFBD / "portal.parquet", CFBD / "draft_picks.parquet"
+    if portal_path.exists():
+        p = pd.read_parquet(portal_path)
+        p["when"] = pd.to_datetime(p.transferDate, utc=True, errors="coerce")
+        p["stars"] = pd.to_numeric(p.stars, errors="coerce")
+        p["rating"] = pd.to_numeric(p.rating, errors="coerce")
+        for side, col in (("in", "destination"), ("out", "origin")):
+            x = p.dropna(subset=[col, "when"]).rename(columns={col: "team"})
+            first = opener.reindex(pd.MultiIndex.from_arrays([x.season, x.team])).to_numpy()
+            x = x[pd.notna(first) & (x["when"].to_numpy() < first)]
+            a = x.groupby(["season", "team"]).agg(
+                n=("stars", "size"), stars=("stars", lambda s: s.fillna(0).sum()),
+                top=("stars", lambda s: (s >= 4).sum()), rating=("rating", lambda s: s.fillna(0).sum()))
+            rows.append(a.add_prefix(f"mvmt_{side}_"))
+    if draft_path.exists():
+        d = pd.read_parquet(draft_path).rename(columns={"year": "season", "collegeTeam": "team"})
+        a = d.groupby(["season", "team"]).agg(n=("overall", "size"), r1=("round", lambda s: (s == 1).sum()),
+                                              r13=("round", lambda s: (s <= 3).sum()))
+        rows.append(a.add_prefix("mvmt_draft_"))
+    out = pd.concat(rows, axis=1).reset_index() if rows else pd.DataFrame(columns=["season", "team"])
+    return out
+
+
+def fill_roster_movement(out: pd.DataFrame, pre: str) -> None:
+    """No transfer/pick is a real zero once the source exists; before it, unknown."""
+    cols = [c for c in out if c.startswith(pre + "mvmt_")]
+    portal = [c for c in cols if not c.startswith(pre + "mvmt_draft_")]
+    out[[c for c in cols if c not in portal]] = out[[c for c in cols if c not in portal]].fillna(0.0)
+    era = out["season"] >= PORTAL_FIRST_SEASON
+    out.loc[era, portal] = out.loc[era, portal].fillna(0.0)
+    out[pre + "mvmt_portal_known"] = era.astype(float)
+
+
+def coach_change_features(log: pd.DataFrame) -> pd.DataFrame:
+    """Per (game_id, team): has the head coach changed during this season before this game?
+
+    /coaches lists every head coach of a team-season with the games he coached. Coaches are
+    ordered by their first season at the school (then career length), and the team's games
+    in kickoff order are assigned in that order — so a midseason firing, an interim for the
+    stretch run or a bowl, is dated to the game it took effect. Unplayed games of the current
+    season go to the latest coach, which is who will be on the sideline. Only game counts are
+    read (the table also carries SP+/SRS, which never enter).
+    Tagged `cchg_` and opt-in."""
+    c = pd.read_parquet(CFBD / "coaches.parquet")
+    by_team: dict = {}
+    for coach in c.itertuples():
+        seasons = list(coach.seasons) if coach.seasons is not None else []
+        for s in seasons:
+            at_school = [x["year"] for x in seasons if x["school"] == s["school"]]
+            career = sum(x["games"] for x in seasons if x["year"] < s["year"])
+            by_team.setdefault((int(s["year"]), s["school"]), []).append(
+                (min(at_school), career, int(s["games"] or 0), coach.id))
+    rows = []
+    for (team, season), d in log.sort_values("kick").groupby(["team", "season"], sort=False):
+        coaches = sorted(by_team.get((int(season), team), []))
+        gids = d.game_id.to_numpy()
+        if len(coaches) < 2:
+            rows.append(pd.DataFrame({"game_id": gids, "team": team, "cchg_changed": 0.0, "cchg_new_since_last": 0.0}))
+            continue
+        owner = np.full(len(gids), len(coaches) - 1)
+        start = 0
+        for k, (_, _, games, _) in enumerate(coaches[:-1]):
+            owner[start:start + games] = k
+            start += games
+        owner[start:] = len(coaches) - 1
+        changed = (owner > 0).astype(float)
+        new = np.r_[0.0, (np.diff(owner) != 0).astype(float)]
+        rows.append(pd.DataFrame({"game_id": gids, "team": team, "cchg_changed": changed, "cchg_new_since_last": new}))
+    return pd.concat(rows, ignore_index=True)
+
+
 class TalentPercentiles:
     """Within-season rank of the 247 composite among FBS rosters — one scale for every season.
 
@@ -775,6 +863,8 @@ def main() -> None:
     rp = returning_production()
     tpct = TalentPercentiles(tal, TalentPercentiles.divisions(g_all))
     sos = schedule_context(log, tal, tpct)   # whom the stats were built against
+    mvmt = roster_movement_features(g_all)   # offseason transfers + draft departures (opt-in)
+    cchg = coach_change_features(log)        # in-season head-coach changes (opt-in)
     # NOTE: aggregating these from g_all (FCS slates included) was measured
     # 2026-08-27 alongside the 20-game history — null on val and test — and
     # reverted to keep the store identical to the proven v16 configuration.
@@ -853,6 +943,12 @@ def main() -> None:
         out = out.merge(s2.rename(columns={c: pre + c for c in (
             "sos_talent", "sos_recruit", "sos_fbs_share", "sos_tpct_talent")}),
             on=["game_id", t], how="left")
+        out = out.merge(mvmt.rename(columns={"team": t, **{c: pre + c for c in mvmt if c.startswith("mvmt_")}}),
+                        on=["season", t], how="left", validate="many_to_one")
+        fill_roster_movement(out, pre)
+        out = out.merge(cchg.rename(columns={"team": t, "cchg_changed": pre + "cchg_changed",
+                                             "cchg_new_since_last": pre + "cchg_new_since_last"}),
+                        on=["game_id", t], how="left", validate="many_to_one")
         # the side's own roster on the one cross-season scale (TalentPercentiles)
         out[pre + "tpct_talent"] = tpct.values(out["season"], out[t], out[f"{side}_division"])
         out[pre + "tpct_known"] = out[pre + "tpct_talent"].notna().astype(float)

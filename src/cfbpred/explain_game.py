@@ -64,6 +64,13 @@ EXACT = {
     "coach_career_winpct": "Coach career win rate", "sos_talent": "Opponents faced: mean talent",
     "tpct_talent": "Talent rank among FBS (247, percentile)", "tpct_known": "Talent rank published",
     "sos_tpct_talent": "Opponents faced: mean talent rank",
+    "mvmt_in_n": "Transfers in", "mvmt_in_stars": "Transfers in: total stars", "mvmt_in_top": "Transfers in: 4-5 stars",
+    "mvmt_in_rating": "Transfers in: total 247 rating", "mvmt_out_n": "Transfers out",
+    "mvmt_out_stars": "Transfers out: total stars", "mvmt_out_top": "Transfers out: 4-5 stars",
+    "mvmt_out_rating": "Transfers out: total 247 rating", "mvmt_draft_n": "Players drafted last spring",
+    "mvmt_draft_r1": "First-round picks last spring", "mvmt_draft_r13": "Round 1-3 picks last spring",
+    "mvmt_portal_known": "Transfer portal data available", "cchg_changed": "Head coach changed this season",
+    "cchg_new_since_last": "New head coach since last game",
     "sos_recruit": "Opponents faced: mean recruiting", "sos_fbs_share": "Share of opponents that were FBS",
     "qb_att_pg": "QB attempts per game", "qb_ypa": "QB yards per attempt", "qb_int_rate": "QB interception rate",
     "qb_sack_rate": "QB sack rate", "qb_td_rate": "QB touchdown rate", "qb_changed": "Starting QB changed",
@@ -102,7 +109,8 @@ def _words(body: str) -> str:
 # happens to be exactly 0 or 1 — an undefeated team's win rate is 1.000, not "yes".
 FLAG_KEYS = {"is_home_site", "home_is_fcs", "opp_is_fcs", "is_conf_game", "is_postseason",
              "qb_changed", "qb_known", "coach_first_year", "retp_qb1", "av_qb_played_last",
-             "pre_qb_passer_known", "pre_qb_roster_known", "tpct_known"}
+             "pre_qb_passer_known", "pre_qb_roster_known", "tpct_known", "mvmt_portal_known",
+             "cchg_changed", "cchg_new_since_last"}
 
 
 def value_format(col: str) -> str:

@@ -56,6 +56,8 @@ EXCLUDED_SCALARS = (
     # cross-season talent percentiles (features_raw.TalentPercentiles): opt-in, so
     # checkpoints fitted on the raw 247 composite keep exactly their inputs
     "tpct",
+    # offseason roster movement (portal, draft) and in-season coach changes: opt-in
+    "mvmt_", "cchg_",
 )
 
 ID_COLS = {"game_id", "season", "week", "home_team", "away_team",

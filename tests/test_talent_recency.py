@@ -99,3 +99,32 @@ def test_median_readout_interpolates_inside_the_crossing_bin():
     m = median_readout(p, MARGIN_CENTRES)
     assert m[0] == pytest.approx(0.0)
     assert m[1] == pytest.approx(7 - 0.5 + (0.5 - 0.4) / 0.6)
+
+
+def test_transfers_count_only_before_the_teams_opener(tmp_path, monkeypatch):
+    import cfbpred.features_raw as fr
+    monkeypatch.setattr(fr, "CFBD", tmp_path)
+    pd.DataFrame({"season": [2024, 2024, 2024], "origin": ["B", "B", "C"], "destination": ["A", "A", None],
+                  "transferDate": ["2024-01-10T00:00:00Z", "2024-09-15T00:00:00Z", "2024-01-05T00:00:00Z"],
+                  "stars": [4, 3, None], "rating": [0.9, None, None]}).to_parquet(tmp_path / "portal.parquet")
+    pd.DataFrame({"year": [2024], "collegeTeam": ["B"], "overall": [10], "round": [1]}).to_parquet(tmp_path / "draft_picks.parquet")
+    g = pd.DataFrame({"season": [2024, 2024], "kick": pd.to_datetime(["2024-08-31", "2024-09-07"], utc=True),
+                      "home_team": ["A", "B"], "away_team": ["C", "A"]})
+    m = fr.roster_movement_features(g).set_index(["season", "team"])
+    assert m.loc[(2024, "A"), "mvmt_in_n"] == 1            # the September transfer came after A's opener
+    assert m.loc[(2024, "A"), "mvmt_in_top"] == 1 and m.loc[(2024, "A"), "mvmt_in_rating"] == pytest.approx(0.9)
+    assert m.loc[(2024, "B"), "mvmt_out_n"] == 1 and m.loc[(2024, "B"), "mvmt_draft_r1"] == 1
+    assert m.loc[(2024, "C"), "mvmt_out_n"] == 1           # an uncommitted entrant still leaves
+
+
+def test_coach_change_is_dated_to_the_game_it_took_effect(tmp_path, monkeypatch):
+    import cfbpred.features_raw as fr
+    monkeypatch.setattr(fr, "CFBD", tmp_path)
+    seasons_a = [{"year": 2020, "school": "A", "games": 12}, {"year": 2021, "school": "A", "games": 3}]
+    seasons_b = [{"year": 2021, "school": "A", "games": 1}]
+    pd.DataFrame({"id": [1, 2], "seasons": [seasons_a, seasons_b]}).to_parquet(tmp_path / "coaches.parquet")
+    kick = pd.to_datetime(["2021-09-01", "2021-09-08", "2021-09-15", "2021-09-22", "2021-09-29"], utc=True)
+    log = pd.DataFrame({"game_id": [1, 2, 3, 4, 5], "season": 2021, "kick": kick, "team": "A"})
+    c = fr.coach_change_features(log).set_index("game_id")
+    assert c.cchg_changed.tolist() == [0, 0, 0, 1, 1]      # 3 games by the incumbent, then the interim
+    assert c.cchg_new_since_last.tolist() == [0, 0, 0, 1, 0]

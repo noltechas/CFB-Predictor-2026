@@ -56,6 +56,7 @@ PYTHONPATH=src python3 -m cfbpred.covers_availability || echo "covers capture fa
 
 echo "== 1/11 CFBD pull (schedule, scores, lines, rosters) =="
 python3 src/cfbpred/update_season.py 2026
+python3 src/cfbpred/pull_roster_movement.py portal draft_picks || echo "roster movement pull failed (non-fatal; last pull kept)"
 # fill roster gaps CFBD hasn't published yet (FCS lag) from ESPN + aliases;
 # idempotent — pairs drop out of the fill as CFBD coverage arrives
 python3 src/cfbpred/pull_espn_roster.py

@@ -570,8 +570,6 @@ async function renderDetail(g) {
             ? `<span class="chip warn" title="The pregame call below stands; only the live in-game reads are missing.">⚠ Kicked off — no live reads reaching the dashboard</span>`
           : `<span class="chip brand">Upcoming · call locked pregame</span>`,
   ];
-  if (g.season < LIVE_SEASON || j.played)
-    chips.push(`<span class="chip warn" title="This is a retrospective reconstruction scored with the latest fitted model; it was not an as-issued forecast and does not imply complete historical availability data.">Historical reconstruction · latest model</span>`);
   if (j.played) chips.push(`<span class="chip ${j.suHit ? "hit" : "miss"}">${j.suHit ? "Winner called" : "Winner missed"}</span>`);
   if (!j.played && j.absEdge != null && j.absEdge >= 4)
     chips.push(`<span class="chip ${g.rosterGap?.length ? "warn" : j.absEdge >= 7 ? "edge-hot" : "edge-warm"}">Disagrees with the line by ${j.absEdge.toFixed(1)}</span>`);

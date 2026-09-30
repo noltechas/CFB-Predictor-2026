@@ -56,7 +56,10 @@ GROUPS = [
      "recruiting class points (4-class window) and the 247 talent composite "
      "(v4+: its within-season rank among FBS rosters, one scale for every season) — "
      "human assessments of players, allowed by rule; no outcome predictions"),
-    ("Coaching", ("coach_",),
+    ("Roster movement", ("mvmt_",),
+     "the offseason's transfers in and out (counts, 247 transfer stars and ratings, dated before "
+     "the opener) and players lost to the NFL draft"),
+    ("Coaching", ("coach_", "cchg_"),
      "tenure, first-year flag, career games and win rate — raw counts"),
     ("Game context", ("rest", "travel", "alt_delta", "b_lat", "b_lon",
                       "b_elev", "is_", "week_scaled", "opp_is_fcs",

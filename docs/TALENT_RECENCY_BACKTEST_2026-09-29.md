@@ -70,6 +70,14 @@ about 0.036 MAE from the median readout (base mean readout 12.617).
   upcoming games.
 - The percentile columns flow through the nightly feature build and publish (verified), unused
   by v8, ready for a future variant.
+- The live scorer (Supabase edge function `live-scorer`, and the disabled Mac fallback
+  `live_scorer.py`) writes the same median readout for `live_predictions` and `live_curve`, so the
+  first in-game number starts from the pregame card instead of jumping by the mean-median gap. The
+  state tower's pregame conditioning stays the mean it was trained on. Verified before promotion on
+  a canary: replaying Washington-Minnesota (167 snaps), win probability and total PMFs are identical
+  to the old function; margins move 0.62 points on average. TS `pmfMedian` equals Python
+  `median_readout` exactly on 1,200 distributions; the TS-vs-PyTorch parity gate still passes
+  (worst |dwp| 2.2e-7). Curves stored before September 30 keep mean-based margins.
 
 ## Leakage check for re-scoring completed games
 

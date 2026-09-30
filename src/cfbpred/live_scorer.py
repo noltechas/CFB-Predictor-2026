@@ -42,7 +42,8 @@ import requests
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from cfbpred.ensemble import load_members, readouts  # noqa: E402
+from cfbpred.ensemble import load_members, median_readout, readouts  # noqa: E402
+from cfbpred.model import MARGIN_CENTRES, TOTAL_CENTRES  # noqa: E402
 from cfbpred.load_supabase import dsn  # noqa: E402
 from cfbpred.live_context import scoreboard_context  # noqa: E402
 from psycopg.types.json import Jsonb
@@ -538,7 +539,11 @@ def main() -> None:
                         pt_s = pt if pt_s is None else pt_s + pt
                 pt_avg = pt_s / len(models)
                 r_out = readouts(pm_s / len(models), pt_avg)
-                wp, em, et = r_out["wp"], r_out["em"], r_out["et"]
+                # display numbers are PMF medians, like the pregame card and the
+                # edge scorer (the state tower's own conditioning stays the mean)
+                wp = r_out["wp"]
+                em = median_readout(pm_s / len(models), MARGIN_CENTRES)
+                et = median_readout(pt_avg, TOTAL_CENTRES)
                 tpmf = np.round(pt_avg.numpy(), 6)
 
                 meta = {r["game_id"]: r for r in todo}

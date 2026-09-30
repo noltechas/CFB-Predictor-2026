@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
           t_left: p.t_left, period: p.period, clock: p.clock, down: p.down,
           distance: p.distance, situation: p.sit ?? "", play_text: p.play_text ?? "",
           home_points: p.hp, away_points: p.ap, home_win_prob: ro.wp,
-          pred_margin: ro.em, pred_total: ro.et,
+          pred_margin: ro.mm, pred_total: ro.mt,
           total_pmf: Array.from(o.total, v => Math.round(v * 1e6) / 1e6) };
       });
       if (write) {
@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
           home_points: g.r.home_points, away_points: g.r.away_points,
           situation: p.sit ?? "",
           live_context: scoreboardContext(g.r, stamp),
-          home_win_prob: ro.wp, pred_margin: ro.em, pred_total: ro.et,
+          home_win_prob: ro.wp, pred_margin: ro.mm, pred_total: ro.mt,
           source: "edge", curve_done: false,
         }, { onConflict: "game_id" });
         if (error) throw new Error(`live headline: ${error.message}`);
@@ -278,7 +278,7 @@ Deno.serve(async (req) => {
         game_id: g.r.game_id,
         score: `${g.r.away_abbr} ${g.r.away_points} @ ${g.r.home_abbr} ${g.r.home_points}`,
         clock: `Q${g.r.period} ${g.r.clock}`,
-        wp: +ro.wp.toFixed(4), margin: +ro.em.toFixed(2), total: +ro.et.toFixed(2),
+        wp: +ro.wp.toFixed(4), margin: +ro.mm.toFixed(2), total: +ro.mt.toFixed(2),
       });
     }
 
@@ -338,7 +338,7 @@ Deno.serve(async (req) => {
           t_left: p.t_left, period: p.period, clock: p.clock,
           down: p.down, distance: p.distance, situation: p.sit ?? "",
           play_text: p.play_text ?? "", home_points: p.hp, away_points: p.ap,
-          home_win_prob: ro.wp, pred_margin: ro.em, pred_total: ro.et, total_pmf: pmf,
+          home_win_prob: ro.wp, pred_margin: ro.mm, pred_total: ro.mt, total_pmf: pmf,
         });
         if (batch.length >= 50) await flush();
         wrote++; wroteThis++;

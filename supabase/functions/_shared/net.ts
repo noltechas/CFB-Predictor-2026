@@ -224,10 +224,31 @@ export class Net {
   }
 }
 
-/** wp / expected margin / expected total — the three numbers the app shows. */
+/**
+ * Median of a binned PMF, interpolated inside the bin where the CDF crosses 0.5
+ * (integer bins read as uniform over [k - 0.5, k + 0.5]). Same rule as Python's
+ * cfbpred.ensemble.median_readout, which the published pregame card uses.
+ */
+export function pmfMedian(p: Float64Array, c: Float64Array, n: number): number {
+  let cdf = 0;
+  for (let k = 0; k < n; k++) {
+    const before = cdf;
+    cdf += p[k];
+    if (cdf >= 0.5) return c[k] - 0.5 + Math.min(1, Math.max(0, (0.5 - before) / Math.max(p[k], 1e-12)));
+  }
+  return c[n - 1];
+}
+
+/**
+ * wp plus the two point numbers the app shows. mm / mt are the distribution's
+ * MEDIANS — what the pregame card publishes, so the first live read starts from
+ * the same number instead of jumping by the mean-median gap (~0.7 pt). em / et
+ * (the means) stay available; they are display-only here — the state tower's
+ * pregame conditioning is the MEAN, computed inside Net.run, and must stay so.
+ */
 export function readouts(margin: Float64Array, total: Float64Array) {
   let wp = 0, em = 0, et = 0;
   for (let i = 0; i < N_MARGIN; i++) { if (MARGIN_C[i] > 0) wp += margin[i]; em += margin[i] * MARGIN_C[i]; }
   for (let i = 0; i < N_TOTAL; i++) et += total[i] * TOTAL_C[i];
-  return { wp, em, et };
+  return { wp, em, et, mm: pmfMedian(margin, MARGIN_C, N_MARGIN), mt: pmfMedian(total, TOTAL_C, N_TOTAL) };
 }

@@ -282,6 +282,7 @@ def save(name: str) -> dict:
         for i, c in enumerate(e["chunks"]):
             if c not in known and c not in need:
                 need[c] = (rel, i)
+    changed = set()
     def up(item):
         c, (rel, i) = item
         if _exists(f"chunks/{c}"):           # stored by an earlier save or another set
@@ -290,11 +291,27 @@ def save(name: str) -> dict:
             fh.seek(i * CHUNK)
             data = fh.read(CHUNK)
         if hashlib.sha256(data).hexdigest() != c:
-            raise RuntimeError(f"{rel} changed while saving")
+            changed.add(rel)                  # written to while we saved: re-hash below
+            return 0
         _put(f"chunks/{c}", data)
         return len(data)
     with ThreadPoolExecutor(WORKERS) as ex:
         sent = sum(ex.map(up, need.items()))
+    for _ in range(3):                         # files another process rewrote mid-save
+        if not changed:
+            break
+        redo, changed = sorted(changed), set()
+        need = {}
+        for rel in redo:
+            st = (ROOT / rel).stat()
+            man["files"][rel] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
+                                 "mode": st.st_mode & 0o777, "chunks": _hash_chunks(ROOT / rel)}
+            for i, c in enumerate(man["files"][rel]["chunks"]):
+                need.setdefault(c, (rel, i))
+        with ThreadPoolExecutor(WORKERS) as ex:
+            sent += sum(ex.map(up, need.items()))
+    if changed:
+        raise RuntimeError(f"files kept changing while saving: {sorted(changed)[:5]}")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     man["saved_at"] = stamp
     man["host"] = os.environ.get("GITHUB_RUN_ID") and f"actions:{os.environ['GITHUB_RUN_ID']}" or os.uname().nodename

@@ -1,0 +1,74 @@
+name: state check
+# Read-only rehearsal: build the runner exactly as the real jobs do, restore every
+# state set from Supabase Storage, and open the artifacts the pipeline needs.
+# Publishes nothing and saves no state; it does warm the Actions cache.
+on:
+  workflow_dispatch:
+env:
+  CFB_HOME: /Users/chasnolte/IdeaProjects/CFB-Predictor-2026
+  TZ: America/Chicago
+  CI_STATE_WORKERS: "8"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cfb-setup
+        with:
+          state-sets: static core daily
+          cache-key: cfb-full
+          cfbd-api-key: ${{ secrets.CFBD_API_KEY }}
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-publishable-key: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          supabase-db-password: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          supabase-db-host: ${{ secrets.SUPABASE_DB_HOST }}
+          supabase-db-pooler-host: ${{ secrets.SUPABASE_DB_POOLER_HOST }}
+          supabase-service-role-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Open what the pipeline opens
+        working-directory: ${{ env.CFB_HOME }}
+        run: |
+          df -h / | tail -1
+          du -sh data models logs
+          PYTHONPATH=src python - <<'PY'
+          import json, os, torch, pandas as pd
+          from pathlib import Path
+          reg = Path("models/player_sequence_production")
+          act = json.loads((reg / "active.json").read_text())
+          bundle = Path(act["bundle"]); assert bundle.exists(), bundle
+          for p in sorted(bundle.parent.glob("member_s*.pt")):
+              torch.load(p, map_location="cpu", weights_only=False)
+          print("active bundle ok:", act["version"], len(list(bundle.parent.glob("member_s*.pt"))), "members")
+          for ptr in ["refreshes/latest.json", "availability_refreshes/latest.json"]:
+              run = Path(json.loads((reg / ptr).read_text())["run_directory"])
+              assert run.is_dir(), run
+              src = run / "context" / "source.json"
+              if src.exists():
+                  for k, v in json.loads(src.read_text()).items():
+                      if isinstance(v, str) and v.startswith("/Users/"):
+                          assert Path(v).exists(), (k, v)
+              print("run ok:", ptr, "->", run.name)
+          broken = [str(p) for p in reg.rglob("*") if p.is_symlink() and not p.exists()]
+          print("broken symlinks under the registry:", len(broken), broken[:3])
+          for f in ["games", "lines", "roster", "talent", "player_game_stats", "teams"]:
+              df = pd.read_parquet(f"data/parquet/cfbd/{f}.parquet")
+              print(f"cfbd/{f}: {len(df):,} rows, seasons {df['season'].min()}-{df['season'].max()}" if "season" in df else f"cfbd/{f}: {len(df):,} rows")
+          hist = json.loads(Path("data/historical_schedule_reviewed_latest.json").read_text())
+          assert Path(hist["schedule"]).exists()
+          rev = json.loads(Path("data/player_context_reviewed_latest.json").read_text())["reviewed"]
+          import re
+          text = Path(rev).read_text()
+          refs = set(re.findall(r'"(/Users/chasnolte/IdeaProjects/CFB-Predictor-2026/[^"]+)"', text))
+          missing = [r for r in refs if not Path(r).exists()]
+          print(f"reviewed availability registry: {len(refs)} absolute source files, {len(missing)} missing", missing[:3])
+          assert not missing
+          print("conference archive runs:", len(list(Path("data/raw/conference_availability").iterdir())))
+          PY
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.CFB_HOME }}/data
+            ${{ env.CFB_HOME }}/models
+            ${{ env.CFB_HOME }}/logs
+            ${{ env.CFB_HOME }}/.ci_state
+          key: cfb-full-${{ github.run_id }}

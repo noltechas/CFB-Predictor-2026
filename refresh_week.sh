@@ -54,37 +54,37 @@ echo "== 0/9 public conference availability archive =="
 PYTHONPATH=src python3 -m cfbpred.conference_availability
 PYTHONPATH=src python3 -m cfbpred.covers_availability || echo "covers capture failed (non-fatal)"
 
-echo "== 1/11 CFBD pull (schedule, scores, lines, rosters) =="
+echo "== 1/10 CFBD pull (schedule, scores, lines, rosters) =="
 python3 src/cfbpred/update_season.py 2026
 python3 src/cfbpred/pull_roster_movement.py portal draft_picks || echo "roster movement pull failed (non-fatal; last pull kept)"
 # fill roster gaps CFBD hasn't published yet (FCS lag) from ESPN + aliases;
 # idempotent — pairs drop out of the fill as CFBD coverage arrives
 python3 src/cfbpred/pull_espn_roster.py
 
-echo "== 2/11 box scores (season-to-date stat features) =="
+echo "== 2/10 box scores (season-to-date stat features) =="
 python3 src/cfbpred/pull_player_stats.py 2026
 python3 src/cfbpred/pull_current_plays.py 2026
 
-echo "== 3/11 rebuild feature store =="
+echo "== 3/10 rebuild feature store =="
 # Restore only the reviewed, immutable historical fixture overlay.  The
 # pointer is intentionally optional: before review this is a no-op.
 PYTHONPATH=src python3 -m cfbpred.historical_fixture_refresh
 python3 src/cfbpred/features_raw.py
 python3 src/cfbpred/audit_future_features.py
 
-echo "== 4/11 publish raw tables =="
+echo "== 4/10 publish raw tables =="
 python3 src/cfbpred/publish_feature_refresh.py
 
 # Step 4 caches the committed feature payloads locally. The historical play
 # corpus is unchanged and remains cached; a cold cache is loaded on demand.
 # A deliberate play-corpus rebuild must still run source.py to refresh it.
-echo "== 5/11 verify committed feature caches =="
+echo "== 5/10 verify committed feature caches =="
 python3 -c 'import sys; sys.path.insert(0, "src"); from cfbpred.source import CACHE; assert all((CACHE / (t + ".parquet")).is_file() for t in ("game_scalars", "game_history")), "Published feature cache missing"'
 
-echo "== 6/11 refresh pregame forecasts (active player-sequence TabM ensemble; started games locked) =="
+echo "== 6/10 refresh pregame forecasts (active player-sequence TabM ensemble; started games locked) =="
 python3 src/cfbpred/refresh_player_sequence_production.py --promote
 
-echo "== 7/11 publish predictions + lines =="
+echo "== 7/10 publish predictions + lines =="
 python3 src/cfbpred/publish_future_predictions.py
 python3 src/cfbpred/pull_espn_lines.py # FCS-slate lines CFBD doesn't carry
 python3 src/cfbpred/publish_lines.py
@@ -93,27 +93,20 @@ python3 src/cfbpred/publish_lines.py
 # own pregame tensors are computed here and read back by the function. The
 # promoted player-sequence model owns the public pregame predictions above.
 # Rolls a -3/+10 day window forward, so a game outside it cannot be scored.
-echo "== 8/11 publish pregame logits for the edge scorer =="
+echo "== 8/10 publish pregame logits for the edge scorer =="
 # The edge scorer's pregame half is now the PUBLISHED pregame distribution itself
 # (publish_live_priors.py), so the live number at kickoff starts where the pregame card
 # ends. Validated on held-out 2025 plays: in-game win-probability log loss .3352 -> .3314.
 # The retired raw-DNN pregame tower (publish_pregame_logits.py) is kept for rollback only.
 python3 src/cfbpred/publish_live_priors.py 2026
 
-echo "== 9/11 publish current Fieldcast rankings =="
+echo "== 9/10 publish current Fieldcast rankings =="
 python3 src/cfbpred/rankings.py --season 2026 --publish
-
-# The app's pregame "why" section. Explanations describe an already-published
-# prediction, so they run last and are pruned to the active model version: a
-# stale attribution of a superseded number is worse than none at all. The
-# upcoming FBS slate only — a full season would take hours at this sampling budget.
-echo "== 10/11 publish pregame explanations for the upcoming slate =="
-python3 src/cfbpred/explain_game.py --upcoming-days 8 --publish
 
 # Point-in-time archive of every source that overwrites itself (rosters, schedule,
 # weather forecasts, lines, availability documents). Best-effort: a failed snapshot
 # must never block a published prediction, so it cannot fail this script.
-echo "== 11/11 archive dated source snapshots =="
+echo "== 10/10 archive dated source snapshots =="
 python3 src/cfbpred/snapshot_sources.py || echo "source archive incomplete (non-fatal)"
 
 echo "done — dashboard is current ($(date))"

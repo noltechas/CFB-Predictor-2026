@@ -13,7 +13,7 @@ from cfbpred.rankings import (_current_roster_games, _current_scalar_fields,
                               _preseason_roster_games, _preseason_scalar_fields,
                               _restrict_player_store_to_cutoff, pair_frame,
                               period_start, rating_readout)
-from cfbpred.ranking_snapshot import catalog_for, completed_before, result_inputs
+from cfbpred.ranking_snapshot import catalog_for, completed_before, completed_week, result_inputs
 import cfbpred.ranking_snapshot as snapshots
 from cfbpred.player_features import build_box_features
 
@@ -74,6 +74,29 @@ def test_future_and_in_progress_games_never_enter_snapshot():
     assert hist[:, :, -1].sum() == 2
     assert opponents[0, 0] == 2
     assert hist[0, 0, 4] == pytest.approx(5.125 / 100)
+
+
+def test_ranking_week_is_the_last_finished_division_i_week():
+    def game(gid, week, kick, final, home="fbs", away="fbs"):
+        return {"game_id": gid, "season": 2026, "week_c": week, "kick": pd.Timestamp(kick),
+                "home_division": home, "away_division": away, "completed": final,
+                "home_points": 21.0 if final else np.nan, "away_points": 14.0 if final else np.nan}
+    games = pd.DataFrame([
+        game(1, 6, "2026-10-10T19:00Z", True),
+        game(2, 6, "2026-10-04T19:00Z", False),                    # stuck: kicked off long ago
+        game(3, 7, "2026-10-11T15:00Z", True, "ii", "ii"),         # Sunday Division II final
+        game(4, 7, "2026-10-15T23:30Z", False, "fbs", "fcs"),
+        game(5, 7, "2026-10-17T19:00Z", False),
+    ])
+    # A lower-division result never advances the week; a stale non-final is cancelled.
+    assert completed_week(games, 2026, pd.Timestamp("2026-10-11T21:00Z")) == 6
+    # A Thursday Division I final does not finish week 7 while Saturday is unplayed.
+    games.loc[games.game_id.eq(4), ["completed", "home_points", "away_points"]] = [True, 30.0, 3.0]
+    assert completed_week(games, 2026, pd.Timestamp("2026-10-16T09:30Z")) == 6
+    games.loc[games.game_id.eq(5), ["completed", "home_points", "away_points"]] = [True, 24.0, 17.0]
+    assert completed_week(games, 2026, pd.Timestamp("2026-10-18T09:30Z")) == 7
+    # Before any Division I final the ranking is still the preseason snapshot.
+    assert completed_week(games, 2026, pd.Timestamp("2026-10-01T00:00Z")) == 0
 
 
 def test_pair_context_is_equal_in_raw_units_and_flags_follow_teams():

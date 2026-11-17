@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cfbpred.cfbd_client import CFBDClient
 from cfbpred.config import CFBD, CURRENT_SEASON, RAW
 
+REFRESH_DAYS = 3
+
 
 def fetch_game_stats(client, game_id):
     """The endpoint truncates at 2,000 rows; a week-wide query loses games."""
@@ -80,24 +82,42 @@ def normalize(plays, stats, season, week, season_type):
 def main(season=CURRENT_SEASON):
     games = pd.read_parquet(CFBD / "games.parquet")
     games = games[(games.season == season) & games.completed.fillna(False)]
+    # A finished game's plays are final once CFBD's post-game corrections land,
+    # so only games that started within REFRESH_DAYS are re-pulled; older ones
+    # come from the cache. Re-pulling every game every night cost ~700
+    # /plays/stats calls a night, which would exhaust the monthly quota.
+    recent = pd.to_datetime(games.startDate, utc=True) >= (
+        pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=REFRESH_DAYS))
+    games = games.assign(recent=recent.to_numpy())
     client = CFBDClient()
+    start = client.spent
     cache = RAW / "current_plays"
     cache.mkdir(parents=True, exist_ok=True)
     batches = []
     for (kind, week), g in games.groupby(["seasonType", "week"]):
-        params = {"year": season, "week": int(week), "seasonType": kind}
-        plays = client.get("/plays", params)
-        plays = [{k: v for k, v in r.items() if k != "ppa"} for r in plays]
-        (cache / f"{season}_{kind}_{week}_plays.json").write_text(json.dumps(plays))
+        week_file = cache / f"{season}_{kind}_{week}_plays.json"
+        if week_file.exists() and not g.recent.any():
+            plays = json.loads(week_file.read_text())
+        else:
+            params = {"year": season, "week": int(week), "seasonType": kind}
+            plays = client.get("/plays", params)
+            plays = [{k: v for k, v in r.items() if k != "ppa"} for r in plays]
+            week_file.write_text(json.dumps(plays))
         stats = []
         play_games = {int(r["gameId"]) for r in plays}
         targets = g[g.id.isin(play_games)]
-        for i, gid in enumerate(targets.id, 1):
-            result = fetch_game_stats(client, gid)
-            (cache / f"{season}_game_{gid}_stats.json").write_text(json.dumps(result))
+        fetched = 0
+        for gid, is_recent in zip(targets.id, targets.recent):
+            game_file = cache / f"{season}_game_{gid}_stats.json"
+            if game_file.exists() and not is_recent:
+                result = json.loads(game_file.read_text())
+            else:
+                result = fetch_game_stats(client, gid)
+                game_file.write_text(json.dumps(result))
+                fetched += 1
             stats.extend(result)
-            if i % 20 == 0 or i == len(targets):
-                print(f"  player attribution: {i}/{len(targets)} games", flush=True)
+        print(f"  player attribution: {len(targets)} games ({fetched} fetched, "
+              f"{len(targets) - fetched} cached)", flush=True)
         frame = normalize(plays, stats, season, int(week), kind)
         if not frame.empty:
             frame = frame[frame.game_id.isin(g.id)]
@@ -110,7 +130,8 @@ def main(season=CURRENT_SEASON):
     tmp = dest.with_suffix(".tmp.parquet")
     out.to_parquet(tmp, index=False)
     tmp.replace(dest)
-    print(f"Saved {len(out):,} raw plays for {out.game_id.nunique()} games")
+    print(f"Saved {len(out):,} raw plays for {out.game_id.nunique()} games "
+          f"[{client.spent - start} CFBD calls]")
 
 
 if __name__ == "__main__":

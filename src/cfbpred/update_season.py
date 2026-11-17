@@ -184,7 +184,7 @@ def upsert_supabase(sched: pd.DataFrame, teams_rows: list) -> None:
 def main(year: int = CURRENT_SEASON) -> None:
     c = CFBDClient(budget=int(os.environ.get("CFBD_BUDGET", 30_000)))
     start = c.spent
-    print(f"season refresh {year}; {start} calls already logged")
+    print(f"season refresh {year}; {start} CFBD calls logged this month")
 
     games = c.get("/games", {"year": year})
     lines = c.get("/lines", {"year": year})

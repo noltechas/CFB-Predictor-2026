@@ -3,6 +3,10 @@
 Every request is appended to logs/api_calls.csv before the response is returned,
 so the budget is auditable independently of this process. Reconcile the local
 tally against the server with `CFBDClient.quota()`.
+
+The budget is MONTHLY, like the server's (Tier 2: 30,000 calls, reset at 00:00
+UTC on the 1st). Counting the whole log instead made it a lifetime cap, which
+silently stopped every refresh on 2026-10-07 with 21k calls left on the server.
 """
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -30,7 +35,7 @@ class BudgetExceeded(RuntimeError):
 @dataclass
 class CFBDClient:
     api_key: str | None = None
-    budget: int = 30_000
+    budget: int = 30_000  # per calendar month (UTC), matching the server quota
     min_interval_s: float = 0.12  # be polite; no documented per-minute throttle
     _spent: int = 0
 
@@ -52,8 +57,16 @@ class CFBDClient:
     # ---------- budget bookkeeping ----------
 
     def _count_logged(self) -> int:
+        """Calls logged since the server's quota last reset (the 1st, 00:00 UTC).
+
+        Log stamps are naive local time, so the reset instant is converted to
+        the same local, ISO-sortable form and compared as strings.
+        """
+        now = datetime.now(timezone.utc)
+        reset = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+        since = reset.astimezone().strftime("%Y-%m-%dT%H:%M:%S")
         with LOG_PATH.open() as fh:
-            return sum(1 for _ in csv.DictReader(fh))
+            return sum(1 for r in csv.DictReader(fh) if r["ts"] >= since)
 
     @property
     def spent(self) -> int:

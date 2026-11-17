@@ -22,12 +22,39 @@ from cfbpred.player_features import (availability_features, build_box_features,
 DYNAMIC_PREFIXES = ("o_", "d_", "bx_", "qb_", "av_", "cx_", "sos_")
 DYNAMIC_NAMES = {"gp", "winpct", "ppg_for", "ppg_against", "box_gp"}
 TARGET_WEEK = 10000  # an emission marker, never a model input
+DIVISION_I = ("fbs", "fcs")
+STALE_FINAL = pd.Timedelta(days=2)
 
 
 def completed_before(games: pd.DataFrame, cutoff: pd.Timestamp) -> pd.DataFrame:
     final = games["completed"].fillna(False).astype(bool) if "completed" in games else True
     return games[(games.kick < cutoff) & games.home_points.notna()
                  & games.away_points.notna() & final].copy()
+
+
+def completed_week(games: pd.DataFrame, season: int, cutoff: pd.Timestamp) -> int:
+    """The latest week whose Division I games are all final.
+
+    A ranking is labelled by the week it leads into, so a week only counts once
+    it is over. Taking the newest result's week instead let a lone Sunday
+    Division II final (Morehouse-Savannah State, 2026-10-11) relabel the
+    post-week-6 ratings as Week 8, and any Thursday result did the same for
+    the rest of that week. A Division I game that kicked off more than
+    STALE_FINAL ago without a final is treated as cancelled, so one stuck
+    provider row cannot freeze the label.
+    """
+    g = games[(games.season == season) & (games.home_division.isin(DIVISION_I)
+                                          | games.away_division.isin(DIVISION_I))]
+    done = completed_before(g, cutoff)
+    if done.empty:
+        return 0
+    pending = g[~g.game_id.isin(done.game_id) & (g.kick > cutoff - STALE_FINAL)]
+    if pending.empty:
+        return int(done.week_c.max())
+    finished = done.week_c[done.week_c < pending.week_c.min()]
+    # Partway through the first week there is no finished week yet; keep the
+    # first week's label so the preseason snapshot is never overwritten.
+    return int(finished.max()) if len(finished) else int(done.week_c.min())
 
 
 def catalog_for(games: pd.DataFrame, season: int, ids: dict) -> pd.DataFrame:
@@ -258,4 +285,4 @@ def build_snapshot(season: int, cutoff: pd.Timestamp, *, preseason: bool = False
             "as_of": cutoff.isoformat(),
             "reconstructed": bool((preseason or reconstructed) and cutoff < feature_time),
             "latest_result": completed.kick.max().isoformat(),
-            "source_week": int(current_games.week_c.max()) if len(current_games) else 0}
+            "source_week": completed_week(games, season, cutoff)}

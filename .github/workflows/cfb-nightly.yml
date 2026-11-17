@@ -1,0 +1,42 @@
+name: nightly
+# Daily: box scores and plays in, feature store rebuilt, the active ensemble re-scores
+# every future game, predictions/rankings/live priors published.
+# Replaces launchd com.cfbpred.refresh (04:30 Central).
+on:
+  schedule:
+    - cron: "30 10 * * *"
+  workflow_dispatch:
+concurrency:
+  group: cfb-pipeline
+  cancel-in-progress: false
+env:
+  CFB_HOME: /Users/chasnolte/IdeaProjects/CFB-Predictor-2026
+  TZ: America/Chicago          # logs/api_calls.csv stamps are naive Central time, as on the Mac
+jobs:
+  nightly:
+    if: github.event_name == 'workflow_dispatch' || vars.CFB_ACTIONS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cfb-setup
+        with:
+          state-sets: static core daily
+          cache-key: cfb-full
+          cfbd-api-key: ${{ secrets.CFBD_API_KEY }}
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-publishable-key: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          supabase-db-password: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          supabase-db-host: ${{ secrets.SUPABASE_DB_HOST }}
+          supabase-db-pooler-host: ${{ secrets.SUPABASE_DB_POOLER_HOST }}
+          supabase-service-role-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Run
+        working-directory: ${{ env.CFB_HOME }}
+        run: ./refresh_week.sh
+      - uses: ./.github/actions/cfb-finish
+        if: always()
+        with:
+          state-sets: core schedule daily
+          cache-key: cfb-full
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-service-role-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

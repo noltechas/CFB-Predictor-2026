@@ -174,13 +174,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--schedule", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--refresh-command", nargs="+", default=[])
+    parser.add_argument("--timeout-minutes", type=int, default=60,
+                        help="kill a slot's refresh after this long (a CI runner may need the full nightly)")
+    parser.add_argument("--lead-minutes", type=int, default=30,
+                        help="start a slot's refresh this long before kickoff (slower CI runners need more)")
     parser.add_argument("--dry-run", action="store_true",
                         help="inspect due/missed slots without running a refresh command")
     args = parser.parse_args(argv)
     if not args.refresh_command and not args.dry_run:
         parser.error("--refresh-command is required unless --dry-run is specified")
     schedule = pd.read_parquet(resolve_schedule(args.schedule))
-    result = dispatch(schedule, args.state, command=args.refresh_command)
+    timeout = args.timeout_minutes * 60
+    result = dispatch(schedule, args.state, command=args.refresh_command,
+                      lead=timedelta(minutes=args.lead_minutes),
+                      runner=lambda command: run_command(command, timeout=timeout))
     print(json.dumps(result, sort_keys=True))
     return 0
 

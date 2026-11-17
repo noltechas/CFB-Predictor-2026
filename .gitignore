@@ -17,3 +17,4 @@ fieldcast-support/
 .pytest_cache/
 .DS_Store
 .claude/settings.local.json
+.ci_state/

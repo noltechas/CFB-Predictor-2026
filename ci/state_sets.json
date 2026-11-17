@@ -1,0 +1,112 @@
+{
+  "sets": {
+    "static": {
+      "roots": [
+        "data/parquet/pbp",
+        "data/parquet/games.parquet",
+        "data/player_identity_overrides.json",
+        "data/historical_schedule_reviewed_latest.json",
+        "models/experiments/complete_history_20260922_v2/source_schedule.parquet",
+        "models/experiments/complete_history_20260922_v2/reviewed_stat_game_aliases.json",
+        "models/experiments/complete_history_20260922_v2/input_only_diagnostic/comparison.json",
+        "data/player_context_reviewed_latest.json",
+        "data/availability_backfill",
+        "data/raw/availability_backfill",
+        "data/raw/availability_archive",
+        "models/player_sequence_production/active.json",
+        "models/player_sequence_production/player-full-context-tabm16-v10",
+        "models/experiments/roster_movement_20260930/stores/20260930T025011485249Z"
+      ],
+      "exclude": [
+        "*.ci_part",
+        "*.DS_Store"
+      ],
+      "required": [
+        "models/player_sequence_production/active.json",
+        "data/parquet/games.parquet",
+        "data/historical_schedule_reviewed_latest.json"
+      ]
+    },
+    "core": {
+      "roots": [
+        "data/parquet/cfbd",
+        "data/parquet/schedule.parquet",
+        "data/parquet/espn_lines.parquet",
+        "data/parquet/game_predictions.parquet",
+        "data/parquet/game_pmfs.parquet",
+        "data/raw/current_plays",
+        "data/raw/conference_availability",
+        "data/raw/covers_availability",
+        "data/raw/sunbelt_availability",
+        "data/raw/player_context",
+        "logs/api_calls.csv",
+        "logs/availability_dispatcher_state.json",
+        "models/player_sequence_production/latest_promotion.json",
+        "models/player_sequence_production/publish_verification.json"
+      ],
+      "exclude": [
+        "*.ci_part",
+        "*.lock",
+        "*.DS_Store",
+        "data/parquet/cfbd/historical_overlay_backups",
+        "data/parquet/cfbd/historical_overlay_backups/*"
+      ],
+      "required": [
+        "data/parquet/cfbd/games.parquet",
+        "data/parquet/cfbd/lines.parquet",
+        "data/parquet/cfbd/roster.parquet",
+        "data/parquet/cfbd/talent.parquet",
+        "data/parquet/cfbd/player_game_stats.parquet",
+        "data/parquet/cfbd/teams.parquet",
+        "data/parquet/schedule.parquet",
+        "logs/api_calls.csv"
+      ]
+    },
+    "daily": {
+      "roots": [
+        "models/player_sequence_production/refreshes/latest.json",
+        "models/player_sequence_production/availability_refreshes/latest.json",
+        {
+          "runs_from": [
+            "models/player_sequence_production/refreshes/latest.json",
+            "models/player_sequence_production/availability_refreshes/latest.json"
+          ],
+          "under": [
+            "models/player_sequence_production/refreshes",
+            "models/player_sequence_production/availability_refreshes"
+          ],
+          "follow": [
+            "context/source.json",
+            "context_source.json",
+            "availability_refresh.json"
+          ]
+        }
+      ],
+      "prune": [
+        "models/player_sequence_production/refreshes",
+        "models/player_sequence_production/availability_refreshes"
+      ],
+      "exclude": [
+        "*.ci_part",
+        "*/context/timeline",
+        "*/context/report_source_issues.json",
+        "*/context/reviewed_and_current.json",
+        "*/context/reviewed_input.json",
+        "*/context/audit"
+      ],
+      "required": [
+        "models/player_sequence_production/refreshes/latest.json"
+      ]
+    },
+    "schedule": {
+      "roots": [
+        "data/parquet/schedule.parquet"
+      ]
+    },
+    "dispatch": {
+      "roots": [
+        "logs/availability_dispatcher_state.json"
+      ]
+    }
+  }
+}

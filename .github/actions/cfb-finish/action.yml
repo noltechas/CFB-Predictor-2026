@@ -1,0 +1,34 @@
+name: CFB runner finish
+description: >
+  Save changed state to Supabase Storage, archive outputs nothing reads back
+  (rollback promotions), drop them locally, then refresh the Actions cache.
+inputs:
+  state-sets: {required: true}
+  cache-key: {required: true}
+  supabase-url: {required: true}
+  supabase-service-role-key: {required: true}
+runs:
+  using: composite
+  steps:
+    - name: Save state and archive promotions
+      shell: bash
+      working-directory: /Users/chasnolte/IdeaProjects/CFB-Predictor-2026
+      env:
+        SUPABASE_URL: ${{ inputs.supabase-url }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ inputs.supabase-service-role-key }}
+      run: |
+        PYTHONPATH=src python -m cfbpred.ci_state save ${{ inputs.state-sets }}
+        if [ -d models/player_sequence_production/promotions ]; then
+          PYTHONPATH=src python -m cfbpred.ci_state archive promotions models/player_sequence_production/promotions
+          rm -rf models/player_sequence_production/promotions
+        fi
+        find models/player_sequence_production -path '*/context/timeline' -prune -exec rm -rf {} + 2>/dev/null || true
+        find models/player_sequence_production \( -name report_source_issues.json -o -name reviewed_and_current.json -o -name reviewed_input.json \) -delete 2>/dev/null || true
+    - uses: actions/cache/save@v4
+      with:
+        path: |
+          /Users/chasnolte/IdeaProjects/CFB-Predictor-2026/data
+          /Users/chasnolte/IdeaProjects/CFB-Predictor-2026/models
+          /Users/chasnolte/IdeaProjects/CFB-Predictor-2026/logs
+          /Users/chasnolte/IdeaProjects/CFB-Predictor-2026/.ci_state
+        key: ${{ inputs.cache-key }}-${{ github.run_id }}

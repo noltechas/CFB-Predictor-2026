@@ -1,0 +1,84 @@
+name: pregame
+# Pre-kickoff availability refresh. A cheap check runs every 10 minutes; only when a
+# kickoff slot is inside the lead window does the heavy job restore state and run the
+# dispatcher, which re-scores with the latest availability reports.
+# Replaces launchd com.cfbpred.availability-dispatcher (lead raised from 30 minutes
+# because a runner is slower than the Mac).
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+env:
+  CFB_HOME: /Users/chasnolte/IdeaProjects/CFB-Predictor-2026
+  TZ: America/Chicago          # logs/api_calls.csv stamps are naive Central time, as on the Mac
+  LEAD_MINUTES: "120"
+jobs:
+  check:
+    if: github.event_name == 'workflow_dispatch' || vars.CFB_ACTIONS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      due: ${{ steps.due.outputs.due }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pandas==2.3.3 pyarrow==21.0.0 requests==2.32.5
+      - name: Fetch schedule and dispatcher state
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: PYTHONPATH=src python -m cfbpred.ci_state restore schedule dispatch
+      - id: due
+        run: |
+          PYTHONPATH=src python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+          import pandas as pd
+          from cfbpred.refresh_scheduler import due_slots, kickoff_slots, load_state
+          now = datetime.now(timezone.utc)
+          schedule = pd.read_parquet("data/parquet/schedule.parquet")
+          state = load_state(Path("logs/availability_dispatcher_state.json"))
+          due = due_slots(kickoff_slots(schedule, now), now, state,
+                          timedelta(minutes=int(os.environ["LEAD_MINUTES"])))
+          print(f"due={'true' if due else 'false'}")
+          PY
+  refresh:
+    needs: check
+    if: needs.check.outputs.due == 'true'
+    concurrency:
+      group: cfb-pipeline
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cfb-setup
+        with:
+          state-sets: static core daily
+          cache-key: cfb-full
+          cfbd-api-key: ${{ secrets.CFBD_API_KEY }}
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-publishable-key: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          supabase-db-password: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          supabase-db-host: ${{ secrets.SUPABASE_DB_HOST }}
+          supabase-db-pooler-host: ${{ secrets.SUPABASE_DB_POOLER_HOST }}
+          supabase-service-role-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Run
+        working-directory: ${{ env.CFB_HOME }}
+        run: |
+          PYTHONPATH=src python -m cfbpred.refresh_scheduler \
+            --schedule data/parquet/schedule.parquet \
+            --state logs/availability_dispatcher_state.json \
+            --lead-minutes "$LEAD_MINUTES" \
+            --timeout-minutes 300 \
+            --refresh-command "$CFB_HOME/refresh_availability.sh"
+      - uses: ./.github/actions/cfb-finish
+        if: always()
+        with:
+          state-sets: core schedule daily
+          cache-key: cfb-full
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-service-role-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

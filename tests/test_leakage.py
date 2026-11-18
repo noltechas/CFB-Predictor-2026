@@ -109,15 +109,17 @@ def test_counting_stats_are_prior_weeks_only(scalars):
     # A team's first appearance can be home OR away, so take the minimum games
     # played across both sides: for every (season, FBS team) it must be 0.
     import pandas as pd
+    # A program moving up a division can carry both labels within one season
+    # (Florida Atlantic 2004 reads FCS in weeks 2-4 and FBS in week 7), so the
+    # invariant applies to teams labelled FBS in every game of that season.
     long = pd.concat([
-        scalars.loc[scalars["home_division"] == "fbs",
-                    ["season", "home_team", "h_gp"]].rename(
-            columns={"home_team": "team", "h_gp": "gp"}),
-        scalars.loc[scalars["away_division"] == "fbs",
-                    ["season", "away_team", "a_gp"]].rename(
-            columns={"away_team": "team", "a_gp": "gp"}),
+        scalars[["season", "home_team", "h_gp", "home_division"]].rename(
+            columns={"home_team": "team", "h_gp": "gp", "home_division": "division"}),
+        scalars[["season", "away_team", "a_gp", "away_division"]].rename(
+            columns={"away_team": "team", "a_gp": "gp", "away_division": "division"}),
     ])
-    first_gp = long.groupby(["season", "team"])["gp"].min().fillna(0)
+    all_fbs = long.groupby(["season", "team"])["division"].transform(lambda d: d.eq("fbs").all())
+    first_gp = long[all_fbs].groupby(["season", "team"])["gp"].min().fillna(0)
     assert (first_gp == 0).all(), (
         "some FBS team's earliest game of a season shows prior games played")
 

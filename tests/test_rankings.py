@@ -330,3 +330,42 @@ def test_generate_dispatches_every_full_context_variant_to_player_model(
     monkeypatch.setattr(rankings, "generate_player", lambda *a, **kw: "player")
     monkeypatch.setattr(rankings, "generate_raw", lambda *a, **kw: "raw")
     assert rankings.generate(2026) == expected
+
+
+def test_finished_team_ranks_from_its_final_game():
+    """A team with no game left uses its last game's snapshot instead of crashing."""
+    import pandas as pd
+    from cfbpred.rankings import _current_roster_games
+    cutoff = pd.Timestamp("2026-11-18T00:00:00Z")
+    catalog = pd.DataFrame({"team": ["Active", "Done"], "division": ["fbs", "fcs"]})
+    rosters = pd.DataFrame({
+        "season": 2026, "team": ["Active", "Active", "Done", "Done"],
+        "game_id": [1, 2, 3, 4], "side": ["home", "away", "home", "away"],
+        "kick": ["2026-11-10T18:00:00Z", "2026-11-21T18:00:00Z",
+                 "2026-11-01T18:00:00Z", "2026-11-15T18:00:00Z"],
+        "players": [50, 50, 40, 40], "last_history_kick": [None, "2026-11-10T21:00:00Z",
+                                                            None, "2026-11-01T21:00:00Z"]})
+    chosen = _current_roster_games(catalog, rosters, [1, 2, 3, 4], cutoff, nearest=True)
+    by_team = chosen.set_index("team")
+    assert by_team.loc["Active", "game_id"] == 2 and not by_team.loc["Active", "season_complete"]
+    assert by_team.loc["Done", "game_id"] == 4 and by_team.loc["Done", "season_complete"]
+
+
+def test_final_game_snapshot_allows_exactly_one_game_lag():
+    import numpy as np
+    import pandas as pd
+    import pytest
+    from cfbpred.ranking_player_cutoff import verify_scalar_cutoff
+    cutoff = pd.Timestamp("2026-11-18T00:00:00Z")
+    schedule = pd.DataFrame({"season": 2026, "home_team": ["Done", "Done"], "away_team": ["X", "Y"],
+                             "kick": pd.to_datetime(["2026-11-01T18:00:00Z", "2026-11-15T18:00:00Z"], utc=True)})
+    chosen = pd.DataFrame({"team": ["Done"], "season": [2026], "game_id": [4],
+                           "kick": [pd.Timestamp("2026-11-15T18:00:00Z")], "season_complete": [True]})
+    records = pd.DataFrame({"gp": [10.0]}, index=["Done"])
+    verify_scalar_cutoff(chosen, schedule, cutoff, pd.DataFrame({"gp": [9.0]}), records)
+    with pytest.raises(ValueError):            # a two-game lag is still an error
+        verify_scalar_cutoff(chosen, schedule, cutoff, pd.DataFrame({"gp": [8.0]}), records)
+    later = pd.concat([schedule, pd.DataFrame({"season": [2026], "home_team": ["Done"], "away_team": ["Z"],
+                                               "kick": pd.to_datetime(["2026-11-29T18:00:00Z"], utc=True)})])
+    with pytest.raises(ValueError):            # not actually finished
+        verify_scalar_cutoff(chosen, later, cutoff, pd.DataFrame({"gp": [9.0]}), records)

@@ -62,14 +62,25 @@ def restrict_context(store, game_indices, cutoff, players, sequences):
 
 
 def verify_scalar_cutoff(chosen, schedule, cutoff, fields, records):
-    """Each selected row must be the next game, with no intervening result."""
-    for r in chosen.itertuples():
+    """Each selected row must be the next game, with no intervening result.
+
+    A team whose season is over (``season_complete``) is represented by its final
+    game instead: that row must really be its last game before the cutoff, with no
+    game scheduled after it, and its scalars may lag the cutoff by exactly that game."""
+    complete = (chosen["season_complete"].fillna(False).astype(bool).to_numpy()
+                if "season_complete" in chosen else np.zeros(len(chosen), bool))
+    for r, done in zip(chosen.itertuples(), complete):
         team_games = schedule[(schedule.home_team.eq(r.team) | schedule.away_team.eq(r.team))
                               & schedule.season.eq(r.season)]
+        if done:
+            later = team_games[pd.to_datetime(team_games.kick, utc=True) > pd.Timestamp(r.kick)]
+            if len(later):
+                raise ValueError(f"Ranking used a final-game snapshot for {r.team}, which has later games")
+            continue
         intervening = team_games[(team_games.kick >= cutoff) & (team_games.kick < r.kick)]
         if len(intervening):
             raise ValueError(f"Ranking scalar target skips a game for {r.team}")
-    expected = records.reindex(chosen.team).gp.to_numpy()
+    expected = records.reindex(chosen.team).gp.to_numpy() - complete.astype(float)
     if not np.array_equal(fields.gp.to_numpy(), expected):
         mismatched = fields.gp.to_numpy() != expected
         detail = [{"team": str(team), "scalar_games": float(actual), "cutoff_games": float(want)}

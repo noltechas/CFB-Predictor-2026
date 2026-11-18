@@ -204,7 +204,24 @@ def _current_roster_games(catalog: pd.DataFrame, rosters: pd.DataFrame,
     available = (available.sort_values(["team", "kick", "game_id"]) if nearest else
                  available.sort_values(["team", "players", "kick"], ascending=[True, False, True]))
     chosen = available.drop_duplicates("team").set_index("team")
+    chosen["season_complete"] = False
     missing = set(catalog.team) - set(chosen.index)
+    if missing:
+        # A team whose season is over has no upcoming game to carry its current
+        # state (late November for FCS, December for most of FBS). Use its final
+        # game's snapshot: the roster is the one it finished with, its results
+        # through the cutoff still enter via the ranking's result history, and only
+        # season-to-date scalars lag by that final game. verify_scalar_cutoff
+        # accepts exactly that one-game lag for these teams and nothing else.
+        played = rosters[(rosters.season == season)
+                         & (pd.to_datetime(rosters.kick, utc=True) < as_of)
+                         & rosters.team.isin(missing)
+                         & rosters.game_id.isin(set(map(int, game_ids)))]
+        played = (played.sort_values(["team", "kick", "game_id"], ascending=[True, False, False])
+                        .drop_duplicates("team").set_index("team"))
+        played["season_complete"] = True
+        chosen = pd.concat([chosen, played])
+        missing = set(catalog.team) - set(chosen.index)
     if missing:
         raise ValueError(f"No current player snapshot for ranking teams: {sorted(missing)[:5]}")
     chosen = chosen.loc[catalog.team].reset_index()

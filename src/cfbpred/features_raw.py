@@ -161,11 +161,51 @@ def load_games(con, fbs_only: bool = True) -> pd.DataFrame:
     # Appalachian State 2008 exists as 400361387 and 282430099). One survives.
     g = g.drop_duplicates(["season", "kick", "home_team", "away_team"],
                           keep="first")
+    g = drop_twin_games(g)
     # Postseason week numbering restarts at 1, which would collide with
     # regular-season weeks in every season-to-date join. week_c is continuous.
     g["week_c"] = np.where(g["season_type"] == "postseason",
                            g["week"] + 20, g["week"])
     return g.sort_values(["season", "kick"]).reset_index(drop=True)
+
+
+def drop_twin_games(g: pd.DataFrame) -> pd.DataFrame:
+    """Drop the second copy of a completed game the source lists twice.
+
+    Two patterns in the corpus, both pure duplicates of one real game:
+      * same week, same two teams, same final score under two ids — an old-style
+        CFBD id with a placeholder midnight kickoff and the ESPN id with the real
+        one (2004-2008 Florida A&M and others; Augsburg-Hamline 2025). Keep the
+        ESPN id (>= 1e6), which is the one box scores are keyed to.
+      * same kickoff and final score with one team shared and the other renamed
+        — every 2004-2008 Rhode Island home game also appears against "Rhodes".
+        Keep the copy whose renamed team has more games in the corpus.
+    Each twin otherwise lands in its sibling's history as a prior game played
+    the same day (tests/test_leakage.py::test_history_is_strictly_prior) and is
+    double-counted in season-to-date records."""
+    done = g.home_points.notna() & g.away_points.notna()
+    c = g[done].copy()
+    if c.empty:
+        return g
+    drop = set()
+    pair = [tuple(sorted(t)) for t in zip(c.home_team, c.away_team)]
+    c["_pair"] = pair
+    c["_espn"] = c.game_id >= 1_000_000
+    key = ["season", "week", "season_type", "_pair", "home_points", "away_points"]
+    ranked = c.sort_values(["_espn", "game_id"], ascending=[False, False])
+    drop |= set(ranked[ranked.duplicated(key, keep="first")].game_id)
+    c = c[~c.game_id.isin(drop)]
+    games_per_team = pd.concat([g.home_team, g.away_team]).value_counts()
+    for shared, other in (("home_team", "away_team"), ("away_team", "home_team")):
+        k = [ "kick", shared, "home_points", "away_points"]
+        twins = c[c.duplicated(k, keep=False)]
+        if twins.empty:
+            continue
+        twins = twins.assign(_n=twins[other].map(games_per_team).fillna(0))
+        twins = twins.sort_values(k + ["_n", "game_id"], ascending=[True] * len(k) + [False, False])
+        drop |= set(twins[twins.duplicated(k, keep="first")].game_id)
+        c = c[~c.game_id.isin(drop)]
+    return g[~g.game_id.isin(drop)]
 
 
 def team_log(g: pd.DataFrame, keep_teams: set | None = None) -> pd.DataFrame:

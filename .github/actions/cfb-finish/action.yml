@@ -22,7 +22,6 @@ runs:
           PYTHONPATH=src python -m cfbpred.ci_state archive promotions models/player_sequence_production/promotions
           rm -rf models/player_sequence_production/promotions
         fi
-        find models/player_sequence_production -path '*/context/timeline' -prune -exec rm -rf {} + 2>/dev/null || true
         find models/player_sequence_production \( -name report_source_issues.json -o -name reviewed_and_current.json -o -name reviewed_input.json \) -delete 2>/dev/null || true
     - uses: actions/cache/save@v4
       with:

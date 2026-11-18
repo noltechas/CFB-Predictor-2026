@@ -88,7 +88,6 @@
       ],
       "exclude": [
         "*.ci_part",
-        "*/context/timeline",
         "*/context/report_source_issues.json",
         "*/context/reviewed_and_current.json",
         "*/context/reviewed_input.json",

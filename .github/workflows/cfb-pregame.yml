@@ -8,13 +8,18 @@ on:
   schedule:                  # UTC; GitHub may start a run several minutes late
     - cron: "*/10 * * * *"
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: "Set by the Supabase scheduler (ci/scheduler.sql); leave false when starting by hand"
+        type: string
+        default: "false"
 env:
   CFB_HOME: /Users/chasnolte/IdeaProjects/CFB-Predictor-2026
   TZ: America/Chicago          # logs/api_calls.csv stamps are naive Central time, as on the Mac
   LEAD_MINUTES: "120"
 jobs:
   check:
-    if: github.event_name == 'workflow_dispatch' || vars.CFB_ACTIONS_ENABLED == 'true'
+    if: (github.event_name == 'workflow_dispatch' && inputs.scheduled != 'true') || vars.CFB_ACTIONS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:

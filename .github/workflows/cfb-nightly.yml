@@ -6,6 +6,11 @@ on:
   schedule:                  # UTC; GitHub may start a run several minutes late
     - cron: "30 10 * * *"
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: "Set by the Supabase scheduler (ci/scheduler.sql); leave false when starting by hand"
+        type: string
+        default: "false"
 concurrency:
   group: cfb-pipeline
   cancel-in-progress: false
@@ -14,7 +19,7 @@ env:
   TZ: America/Chicago          # logs/api_calls.csv stamps are naive Central time, as on the Mac
 jobs:
   nightly:
-    if: github.event_name == 'workflow_dispatch' || vars.CFB_ACTIONS_ENABLED == 'true'
+    if: (github.event_name == 'workflow_dispatch' && inputs.scheduled != 'true') || vars.CFB_ACTIONS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 330
     steps:

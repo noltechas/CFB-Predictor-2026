@@ -49,6 +49,7 @@ jobs:
         env:
           PYTHONPATH: src
         run: |
+          set -a; source .env; set +a      # API and database credentials, as refresh_week.sh loads them
           case "${{ inputs.mode }}" in
             stage)             python -m cfbpred.ci_retrain run --version "${{ inputs.version }}" --seeds ${{ inputs.seeds }} ;;
             stage-and-promote) python -m cfbpred.ci_retrain run --version "${{ inputs.version }}" --seeds ${{ inputs.seeds }} --promote ;;

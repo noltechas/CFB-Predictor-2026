@@ -1,0 +1,63 @@
+name: retrain
+# Retrains the production pregame ensemble on a GitHub runner — never a laptop:
+# the active variant, five outer seeds, the shipped fixed-epoch recipe, trained on a store
+# chain built from the latest nightly snapshot (cfbpred.ci_retrain).
+#   stage              train, score, audit, grade against the live model (guard), rebuild
+#                      this season's rankings, save the staged release; nothing public changes
+#   stage-and-promote  the same, then publish — only if the guard and audits pass
+#   promote-staged     publish the release an earlier "stage" run left staged
+# A failed run saves no state, so the live model and its pointers stay as they were.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release name, e.g. player-full-context-tabm16-v11"
+        required: true
+      mode:
+        description: "What to do"
+        type: choice
+        options: [stage, stage-and-promote, promote-staged]
+        default: stage
+      seeds:
+        description: "Outer seeds"
+        default: "0 1 2 3 4"
+concurrency:
+  group: cfb-pipeline
+  cancel-in-progress: false
+env:
+  CFB_HOME: /Users/chasnolte/IdeaProjects/CFB-Predictor-2026
+  TZ: America/Chicago
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cfb-setup
+        with:
+          state-sets: static core daily
+          cache-key: cfb-full
+          cfbd-api-key: ${{ secrets.CFBD_API_KEY }}
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-publishable-key: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          supabase-db-password: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          supabase-db-host: ${{ secrets.SUPABASE_DB_HOST }}
+          supabase-db-pooler-host: ${{ secrets.SUPABASE_DB_POOLER_HOST }}
+          supabase-service-role-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Retrain
+        working-directory: ${{ env.CFB_HOME }}
+        env:
+          PYTHONPATH: src
+        run: |
+          case "${{ inputs.mode }}" in
+            stage)             python -m cfbpred.ci_retrain run --version "${{ inputs.version }}" --seeds ${{ inputs.seeds }} ;;
+            stage-and-promote) python -m cfbpred.ci_retrain run --version "${{ inputs.version }}" --seeds ${{ inputs.seeds }} --promote ;;
+            promote-staged)    python -m cfbpred.ci_retrain promote --version "${{ inputs.version }}" ;;
+          esac
+      - uses: ./.github/actions/cfb-finish
+        if: success()
+        with:
+          state-sets: static core daily
+          cache-key: cfb-full
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-service-role-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

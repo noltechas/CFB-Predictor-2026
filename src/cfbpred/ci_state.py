@@ -148,7 +148,8 @@ def resolve_roots(spec: dict) -> list:
     directory (an immediate child of an `under` dir) named by an absolute path inside
     the pointer files, followed transitively through each run's own pointer files.
     This is how "the latest daily run and whatever an availability run builds on"
-    becomes a concrete list without hard-coding timestamps."""
+    becomes a concrete list without hard-coding timestamps. An optional "match" (glob on
+    the run's name) keeps a broad `under` dir from pulling in siblings another set owns."""
     roots = []
     prefix = str(ROOT) + "/"
     for r in spec["roots"]:
@@ -156,6 +157,8 @@ def resolve_roots(spec: dict) -> list:
             roots.append(r)
             continue
         seen, queue = set(), [ROOT / f for f in r["runs_from"]]
+        match = r.get("match", "*")
+        match = [match] if isinstance(match, str) else match
         while queue:
             for s in _json_strings(queue.pop()):
                 if not s.startswith(prefix):
@@ -163,7 +166,10 @@ def resolve_roots(spec: dict) -> list:
                 rel = s[len(prefix):]
                 for u in r["under"]:
                     if rel.startswith(u + "/"):
-                        run = f"{u}/{rel[len(u) + 1:].split('/')[0]}"
+                        name = rel[len(u) + 1:].split('/')[0]
+                        run = f"{u}/{name}"
+                        if not any(fnmatch.fnmatch(name, m) for m in match):
+                            continue
                         if run not in seen and (ROOT / run).is_dir():
                             seen.add(run)
                             roots.append(run)

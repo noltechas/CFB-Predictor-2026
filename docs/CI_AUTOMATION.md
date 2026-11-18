@@ -46,6 +46,22 @@ Never run a job against missing state: `update_season.py` and
 `pull_player_stats.py` would write 2026-only tables and `publish_lines.py`
 would replace `public.game_lines` with them. A failed restore stops the job.
 
+## Retraining the pregame model (`retrain`, manual)
+
+Training runs on a runner too; nothing needs the laptop. Actions -> **retrain** -> Run workflow:
+
+| mode | what happens |
+|---|---|
+| `stage` | builds a store chain from the latest nightly snapshot, fits the active variant for five outer seeds (fixed 14 epochs, the shipped recipe), scores and audits the season, grades the new ensemble against the live one, rebuilds this season's rankings, and saves the staged release to CI state. Nothing public changes. |
+| `stage-and-promote` | the same, then publishes through `scripts/publish_full_context_release.py` (rollback archive + readback checks), but only if the gates pass. |
+| `promote-staged` | publishes the release an earlier `stage` run left staged. |
+
+The guard is pre-registered in `cfbpred/ci_retrain.py` (`GUARD`). On completed FBS-involved games of the season, both models are scored on the same store chain, and the candidate must stay within +0.05 margin MAE (PMF median) and +0.002 win-probability log loss of the live model, over at least 200 games. Lines are never used. A run that fails a gate exits non-zero and saves no state, so `active.json` and every pointer stay as they were.
+
+State: the retrain job is the only writer of the `static` set. `static` follows `active.json` and `staged_full_context.json` to the release folder and its store chain (`runs_from` + `match` in `ci/state_sets.json`), so a promotion survives the next restore and the previous release stays as the rollback target.
+
+When a new season starts, bump `CURRENT_SEASON` in `config.py` (the checkpoint lineage check trains only on earlier seasons) and the season guard in the publisher before retraining.
+
 ## Rolling back to the Mac
 
 ```bash

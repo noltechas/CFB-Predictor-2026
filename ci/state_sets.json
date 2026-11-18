@@ -15,7 +15,33 @@
         "data/raw/availability_archive",
         "models/player_sequence_production/active.json",
         "models/player_sequence_production/player-full-context-tabm16-v10",
-        "models/experiments/roster_movement_20260930/stores/20260930T025011485249Z"
+        "models/experiments/roster_movement_20260930/stores/20260930T025011485249Z",
+        "models/player_sequence_production/staged_full_context.json",
+        "models/player_sequence_production/release_backups",
+        "models/experiments/ci_retrain/production",
+        "models/experiments/ci_retrain/reports",
+        {
+          "runs_from": [
+            "models/player_sequence_production/active.json",
+            "models/player_sequence_production/staged_full_context.json"
+          ],
+          "under": [
+            "models/player_sequence_production",
+            "models/experiments/ci_retrain/stores",
+            "models/experiments/roster_movement_20260930/stores"
+          ],
+          "match": [
+            "player-full-context-*",
+            "20[0-9][0-9]*"
+          ],
+          "follow": [
+            "bundle.json",
+            "source.json",
+            "runtime/context/source.json",
+            "context/source.json",
+            "context_source.json"
+          ]
+        }
       ],
       "exclude": [
         "*.ci_part",

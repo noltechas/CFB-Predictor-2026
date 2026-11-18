@@ -10,9 +10,67 @@ the Mac. The live in-game scorer was already a Supabase Edge Function.
 | `pregame` (`cfb-pregame.yml`) | check every 10 min; refresh 120 min before each kickoff slot | launchd `com.cfbpred.availability-dispatcher` |
 | `state check` (`cfb-state-check.yml`) | manual | read-only rehearsal |
 
-Scheduled runs only fire while the repository variable `CFB_ACTIONS_ENABLED` is
-`true`; manual runs always work. All jobs share the `cfb-pipeline`
-concurrency group, which replaces `/tmp/cfbpred_publish.lock`.
+Supabase starts the scheduled runs (next section), not GitHub's `schedule:`
+trigger. A scheduled run only does work while the repository variable
+`CFB_ACTIONS_ENABLED` is `true`; a run started by hand always works. All jobs
+share the `cfb-pipeline` concurrency group, which replaces `/tmp/cfbpred_publish.lock`.
+
+## Who starts the scheduled runs: Supabase pg_cron
+
+GitHub's `schedule:` trigger is best effort. On 2026-11-18 it ran the 30-minute
+scores job 3 times in 18 hours, the 10-minute pregame check 3 times, started the
+nightly 8.5 hours late, and skipped the basketball morning refresh. So since
+that day the workflows have no `schedule:` block, and pg_cron in the CFB
+Production Supabase project starts them through the REST API
+(`workflow_dispatch`) at the same UTC times. Everything is in `ci/scheduler.sql`;
+re-applying it is safe and restores the jobs.
+
+| pg_cron job | When (UTC) | Starts |
+|---|---|---|
+| `gh-cfb-scores` | :07 and :37 | `cfb-scores.yml` |
+| `gh-cfb-pregame` | every 10 min | `cfb-pregame.yml` |
+| `gh-cfb-nightly` | 10:30 | `cfb-nightly.yml` |
+| `gh-cbb-nightly` | 10:15 and 18:15 | `nightly.yml` in CBB-Predictor-2026 |
+| `gh-dispatch-log-trim` | 04:00 | keeps 30 days of `ops.dispatch_log` |
+
+`ops.dispatch(repo, workflow, inputs, ref)` sends the request and logs GitHub's
+answer in `ops.dispatch_log` (204 means accepted). Dispatches carry
+`inputs.scheduled = "true"`, which is how the football workflows tell a
+scheduler run (obeys `CFB_ACTIONS_ENABLED`) from one started by hand (always runs).
+
+**The one-deep queue.** GitHub keeps only one waiting run per concurrency group,
+and a newly queued run cancels the one already waiting. A pregame refresh holds
+`cfb-pipeline` for about an hour and a half, so without care each 10-minute check
+would queue another refresh and a scores run could knock out a waiting nightly
+(it happened to the first scheduled scores run, 22:07 UTC on 2026-11-18). So a
+scheduled scores run and a pregame refresh first run `ci/pipeline_busy.sh`
+outside the queue and stand down while a nightly, a retrain or a pregame refresh
+is queued or running; that heavier job republishes everything they would have.
+Runs started by hand skip the check.
+
+```sql
+-- the last day of dispatches; anything but 204 is a problem
+select at, workflow, status, detail from ops.dispatch_log
+ where at > now() - interval '1 day' and status is distinct from 204 order by at desc;
+```
+
+**The token.** A fine-grained GitHub token (repositories CFB-Predictor-2026 and
+CBB-Predictor-2026 only, Actions read and write) in Supabase Vault as
+`github_actions_token`, created 2026-11-18 with a one-year expiry. Renew it
+before it lapses: make a new token the same way, then run
+`cd ~/IdeaProjects/CBB-Predictor-2026 && PYTHONPATH=src python3 scripts/store_github_token.py`
+(input hidden; it replaces the stored one). An expired or revoked token shows
+as 401 in `ops.dispatch_log`, and no scheduled run starts until it is replaced.
+
+**Pausing.** Football only, keeping the jobs: `gh variable set CFB_ACTIONS_ENABLED
+--body false -R noltechas/CFB-Predictor-2026` (runs still start, then skip).
+Everything, both sports:
+
+```sql
+select cron.unschedule(jobname) from cron.job where jobname like 'gh-%';
+```
+
+Re-apply `ci/scheduler.sql` to resume.
 
 ## How a runner gets the Mac's disk
 
@@ -75,7 +133,9 @@ done
 
 `--force-local` makes the Mac's files match the saved state exactly (it deletes
 local files the state lacks under those roots) — that is the point of a
-rollback, but check nothing local is newer first.
+rollback, but check nothing local is newer first. The variable alone already
+stops the football runs from doing work; also unschedule the `gh-cfb-*` pg_cron
+jobs (above) so Supabase stops starting them at all.
 
 ## Housekeeping
 

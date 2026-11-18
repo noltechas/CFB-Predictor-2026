@@ -2,23 +2,45 @@ name: scores
 # Every 30 minutes: final scores, lines and rosters in; Results ledger and lines
 # republished; public availability reports archived. Replaces launchd com.cfbpred.scores.
 on:
-  schedule:                  # UTC; GitHub may start a run several minutes late
-    - cron: "7,37 * * * *"
+  # Started on the clock by Supabase pg_cron (CFB-Predictor-2026/ci/scheduler.sql);
+  # GitHub's own schedule trigger ran late or not at all.
   workflow_dispatch:
     inputs:
       scheduled:
         description: "Set by the Supabase scheduler (ci/scheduler.sql); leave false when starting by hand"
         type: string
         default: "false"
-concurrency:
-  group: cfb-pipeline
-  cancel-in-progress: false
 env:
   CFB_HOME: /Users/chasnolte/IdeaProjects/CFB-Predictor-2026
   TZ: America/Chicago          # logs/api_calls.csv stamps are naive Central time, as on the Mac
 jobs:
-  scores:
+  # Outside the queue: a scheduled run stands down while a nightly, retrain or
+  # pregame refresh is queued or running (they republish everything this does),
+  # so it never knocks a waiting nightly out of the one-deep cfb-pipeline queue.
+  gate:
     if: (github.event_name == 'workflow_dispatch' && inputs.scheduled != 'true') || vars.CFB_ACTIONS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      busy: ${{ steps.busy.outputs.busy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: ci
+      - id: busy
+        if: github.event_name != 'workflow_dispatch' || inputs.scheduled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ci/pipeline_busy.sh >> "$GITHUB_OUTPUT"
+  scores:
+    needs: gate
+    if: needs.gate.outputs.busy != 'true'
+    concurrency:
+      group: cfb-pipeline
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

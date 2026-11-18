@@ -3,8 +3,8 @@ name: nightly
 # every future game, predictions/rankings/live priors published.
 # Replaces launchd com.cfbpred.refresh (04:30 Central).
 on:
-  schedule:                  # UTC; GitHub may start a run several minutes late
-    - cron: "30 10 * * *"
+  # Started on the clock by Supabase pg_cron (CFB-Predictor-2026/ci/scheduler.sql);
+  # GitHub's own schedule trigger ran late or not at all.
   workflow_dispatch:
     inputs:
       scheduled:

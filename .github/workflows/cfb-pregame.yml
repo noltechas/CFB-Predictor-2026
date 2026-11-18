@@ -5,8 +5,8 @@ name: pregame
 # Replaces launchd com.cfbpred.availability-dispatcher (lead raised from 30 minutes
 # because a runner is slower than the Mac).
 on:
-  schedule:                  # UTC; GitHub may start a run several minutes late
-    - cron: "*/10 * * * *"
+  # Started on the clock by Supabase pg_cron (CFB-Predictor-2026/ci/scheduler.sql);
+  # GitHub's own schedule trigger ran late or not at all.
   workflow_dispatch:
     inputs:
       scheduled:
@@ -22,8 +22,12 @@ jobs:
     if: (github.event_name == 'workflow_dispatch' && inputs.scheduled != 'true') || vars.CFB_ACTIONS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
     outputs:
       due: ${{ steps.due.outputs.due }}
+      busy: ${{ steps.busy.outputs.busy }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,9 +54,17 @@ jobs:
                           timedelta(minutes=int(os.environ["LEAD_MINUTES"])))
           print(f"due={'true' if due else 'false'}")
           PY
+      # a slot stays "due" until the running refresh saves its state, so without
+      # this every 10-minute check would queue another refresh behind it (and
+      # cancel whatever else was waiting in the one-deep cfb-pipeline queue)
+      - id: busy
+        if: steps.due.outputs.due == 'true' && (github.event_name != 'workflow_dispatch' || inputs.scheduled == 'true')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ci/pipeline_busy.sh >> "$GITHUB_OUTPUT"
   refresh:
     needs: check
-    if: needs.check.outputs.due == 'true'
+    if: needs.check.outputs.due == 'true' && needs.check.outputs.busy != 'true'
     concurrency:
       group: cfb-pipeline
       cancel-in-progress: false

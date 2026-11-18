@@ -2,7 +2,7 @@ name: scores
 # Every 30 minutes: final scores, lines and rosters in; Results ledger and lines
 # republished; public availability reports archived. Replaces launchd com.cfbpred.scores.
 on:
-  schedule:
+  schedule:                  # UTC; GitHub may start a run several minutes late
     - cron: "7,37 * * * *"
   workflow_dispatch:
 concurrency:

@@ -5,7 +5,7 @@ name: pregame
 # Replaces launchd com.cfbpred.availability-dispatcher (lead raised from 30 minutes
 # because a runner is slower than the Mac).
 on:
-  schedule:
+  schedule:                  # UTC; GitHub may start a run several minutes late
     - cron: "*/10 * * * *"
   workflow_dispatch:
 env:

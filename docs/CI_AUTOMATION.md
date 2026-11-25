@@ -120,22 +120,21 @@ State: the retrain job is the only writer of the `static` set. `static` follows 
 
 When a new season starts, bump `CURRENT_SEASON` in `config.py` (the checkpoint lineage check trains only on earlier seasons) and the season guard in the publisher before retraining.
 
-## Rolling back to the Mac
+## No Mac fallback
 
-```bash
-cd ~/IdeaProjects/CFB-Predictor-2026
-gh variable set CFB_ACTIONS_ENABLED --body false -R noltechas/CFB-Predictor-2026
-PYTHONPATH=src python3 -m cfbpred.ci_state restore core schedule dispatch daily --force-local
-for l in scores availability-dispatcher refresh; do
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cfbpred.$l.plist
-done
-```
+Nothing in this pipeline runs on the laptop, and there is no rollback to it.
+The old launchd agents (`com.cfbpred.scores`, `.availability-dispatcher`,
+`.refresh`, `.live`) were only booted out on 2026-11-18 with their plists left
+in `~/Library/LaunchAgents`, so the next login reloaded them. For six days they
+ran beside the Actions jobs: they published to Supabase on their own and wrote
+~30 GB of refresh/promotion archives and availability captures to the Mac's
+disk until it was full. On 2026-11-24 the plists were deleted and the agents
+disabled (`launchctl print-disabled gui/$(id -u)`), and `refresh_scores.sh`,
+`refresh_week.sh`, `refresh_availability.sh` and `run_live_scorer.sh` now exit
+unless `GITHUB_ACTIONS=true`.
 
-`--force-local` makes the Mac's files match the saved state exactly (it deletes
-local files the state lacks under those roots) — that is the point of a
-rollback, but check nothing local is newer first. The variable alone already
-stops the football runs from doing work; also unschedule the `gh-cfb-*` pg_cron
-jobs (above) so Supabase stops starting them at all.
+To pause the football pipeline, set `CFB_ACTIONS_ENABLED=false` and unschedule
+the `gh-cfb-*` pg_cron jobs (above). Hand runs from the Actions tab still go.
 
 ## Housekeeping
 

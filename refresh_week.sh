@@ -12,6 +12,11 @@
 # repaired release automatically takes precedence over overlapping games.
 set -euo pipefail
 cd "$(dirname "$0")"
+# GitHub Actions only (see refresh_scores.sh).
+if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+  echo "$(basename "$0") runs on GitHub Actions only (Actions tab -> Run workflow); not running on this machine." >&2
+  exit 1
+fi
 # Hold the Mac awake for exactly this run: launchd often fires jobs inside a
 # ~45 s maintenance DarkWake, and the Mac re-sleeping mid-COPY killed the
 # 2026-09-26/27 nightlies. -s (system sleep, on AC) is what holds a DarkWake.
